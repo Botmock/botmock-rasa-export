@@ -19,8 +19,6 @@ namespace Botmock {
 
 export type ProjectData<T> = T extends Promise<infer K> ? K : any;
 
-export type Templates = { [actionName: string]: { [type: string]: any } };
-
 interface IConfig {
   readonly outputDir: string;
   readonly projectData: unknown;
@@ -29,7 +27,7 @@ interface IConfig {
 export default class FileWriter extends flow.AbstractProject {
   private outputDir: string;
   private intentMap: any;
-  private messageCollector: Function;
+  private boardStructureByMessages: flow.SegmentizedStructure;
   private stories: { [intentName: string]: string[] };
   /**
    * Creates instance of FileWriter
@@ -39,12 +37,11 @@ export default class FileWriter extends flow.AbstractProject {
   constructor(config: IConfig) {
     super({ projectData: config.projectData as ProjectData<typeof config.projectData> });
     this.outputDir = config.outputDir;
-    this.intentMap = utils.createIntentMap(this.projectData.board.board.messages, this.projectData.intents);
-    this.messageCollector = utils.createMessageCollector(this.intentMap, this.getMessage);
+    this.boardStructureByMessages = this.segmentizeBoardFromMessages();
     this.stories = convertIntentStructureToStories({
       intents: this.projectData.intents,
       intentMap: this.intentMap,
-      messageCollector: this.messageCollector,
+      messageCollector: this.gatherMessagesUpToNextIntent,
       messages: this.projectData.board.board.messages
     });
   }
@@ -70,7 +67,7 @@ export default class FileWriter extends flow.AbstractProject {
    * Creates object describing templates for the project
    * @returns Templates
    */
-  private createTemplates(): Templates {
+  private createTemplates(): { [actionName: string]: { [type: string]: any } } {
     const actionNameContent = this.getUniqueActionNames()
       .reduce((acc, actionName: string) => {
         const PREFIX_LENGTH = 6;
@@ -82,6 +79,7 @@ export default class FileWriter extends flow.AbstractProject {
           [actionName]: [message, ...collectedMessages].reduce((accu, message: flow.Message) => {
             let payload: string | {};
             switch (message.message_type) {
+              // case "delay":
               // case "api":
               case "jump":
                 // @ts-ignore
@@ -98,9 +96,11 @@ export default class FileWriter extends flow.AbstractProject {
                 break;
               case "button":
               case "quick_replies":
+                const key = (message.payload as object).hasOwnProperty("buttons")
+                  ? "buttons"
+                  : "quick_replies";
                 // @ts-ignore
-                payload = (message.payload.quick_replies || message.payload.buttons)
-                  .map(({ title, payload }) => ({ buttons: { title, payload } }));
+                payload = message.payload[key].map(({ title, payload }) => ({ buttons: { title, payload } }));
                 break;
               default:
                 // @ts-ignore
@@ -131,10 +131,7 @@ export default class FileWriter extends flow.AbstractProject {
       actions: this.getUniqueActionNames(),
       templates: this.createTemplates()
     });
-    return await writeFile(
-      outputFilePath,
-      `${firstLine}${EOL}${data}`
-    );
+    return await writeFile(outputFilePath, `${firstLine}${EOL}${data}`);
   }
 /**
  * Writes intent markdown file
@@ -143,10 +140,7 @@ export default class FileWriter extends flow.AbstractProject {
     const { intents, entities } = this.projectData;
     const outputFilePath = join(this.outputDir, "data", "nlu.md");
     await mkdirp(join(this.outputDir, "data"));
-    await writeFile(
-      outputFilePath,
-      genIntents({ intents, entities })
-    );
+    await writeFile(outputFilePath, genIntents({ intents, entities }));
   }
   /**
    * Gets the lineage of intents implied by a given message id

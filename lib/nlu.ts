@@ -8,16 +8,17 @@ interface Config {
 
 /**
  * Creates markdown content for intents
- * @param config Object containing intents and entities of the project
- * @returns string
+ * @param config object containing intents and entities of the project
+ * @returns file contents as a string
  */
 export function genIntents({ intents, entities }: Config): string {
   const generateExample = ({ text, variables }: flow.Utterance, entityList: flow.Entity[]): string => {
     let str: string = text;
     if (variables) {
       variables.forEach(({ name, entity: variableId }: Partial<flow.Variable>) => {
-        // side effect: replaces Botmock variable with Rasa entity
+        // @ts-ignore
         let search = new RegExp(name, "gi");
+        // @ts-ignore
         const formattedName = name
           .replace(/%/g, "")
           .replace(/ /g, "_")
@@ -26,14 +27,13 @@ export function genIntents({ intents, entities }: Config): string {
         search = new RegExp(`\\[(${formattedName})\\]`, "gi");
         const matchingEntity = entityList.find(entity => entity.id === variableId);
         if (typeof matchingEntity !== "undefined") {
-          // find matching entity, get array of data values it can take on
+          // @ts-ignore
           str = matchingEntity.data.map(({ value: entityVal, synonyms }) => {
-              // create a copy of the current example for each entity value
               const singleExample = str.replace(search, `[${entityVal.trim()}]`);
               if (synonyms.length > 0) {
-                // create examples for each synonym (required by rasa for detection)
                 const multipleExamples = [
                   singleExample,
+                  // @ts-ignore
                   ...synonyms.map(synonym => str.replace(search, `[${synonym.trim()}]`))
                 ].join(`${EOL}- `);
                 return multipleExamples;
@@ -51,14 +51,15 @@ export function genIntents({ intents, entities }: Config): string {
     const { id, name, utterances: examples, updated_at: { date: timestamp } } = intent;
     return `${index !== 0 ? EOL : ""}<!-- ${timestamp} | ${id} -->
 ## intent:${name.toLowerCase()}
-${examples.map(example => generateExample(example, entities)).join(EOL)}`;
+${examples.map((example: any) => generateExample(example, entities)).join(EOL)}`;
   };
 
   const generateEntity = (entity: any): string => {
     const { id, name, data: values, updated_at: { date: timestamp } } = entity;
+    // @ts-ignore
     const synonym_variance: number = values.reduce((count, { synonyms }) => count + synonyms.length, 0);
-    // if there are less synonyms than values, create a lookup table
     if (synonym_variance < values.length) {
+      // @ts-ignore
       const lookupArr = values.map(({ value, synonyms }) =>
         synonyms.length ? `- ${value}\n- ${synonyms.join(`${EOL}-`)}` : `- ${value}`
       );
@@ -68,7 +69,7 @@ ${examples.map(example => generateExample(example, entities)).join(EOL)}`;
 ${lookupArr.join(EOL)}
 `;
     } else {
-      // else, there are enough synonyms
+      // @ts-ignore
       const synonymsArray = values.map(({ value, synonyms }) => (
         `
 <!-- ${timestamp} | entity : ${name} | ${id} -->
@@ -78,7 +79,6 @@ ${lookupArr.join(EOL)}
       return synonymsArray.join(EOL);
     }
   };
-  // return the file to be written as a string
   return `${intents.map((intent: flow.Intent, i: number) => generateIntent(intent, entities, i)).join(EOL)}
 ${entities.map(entity => generateEntity(entity)).join(EOL)}`;
 }

@@ -22,7 +22,7 @@ export function convertIntentStructureToStories(intentObj: IntentObj): { [intent
       ...acc,
       ...connectedIntentIds.reduce((accu, id: string) => {
         const message: any = getMessage(idOfMessageConnectedByIntent);
-        const intent: flow.Intent = intents.find(intent => intent.id === id);
+        const intent = intents.find(intent => intent.id === id) as flow.Intent;
         if (typeof intent !== "undefined") {
           return {
             ...accu,
