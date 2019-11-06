@@ -4,40 +4,35 @@ import * as flow from "@botmock-api/flow";
 import uuid from "uuid/v4";
 import { writeFile, mkdirp } from "fs-extra";
 import { stringify as toYAML } from "yaml";
-import { EventEmitter } from "events";
 import { join } from "path";
 import { EOL } from "os";
 import { genIntents } from "./nlu";
 import { convertIntentStructureToStories } from "./intent";
 
-export type IntentMap = Map<string, string[]>;
+export namespace Rasa {}
 
-type Templates = { [actionName: string]: { [type: string]: any } };
+export type ProjectData<T> = T extends Promise<infer K> ? K : any;
 
-interface Config {
+export type Templates = { [actionName: string]: { [type: string]: any } };
+
+interface IConfig {
   readonly outputDir: string;
-  readonly projectData: flow.CollectedResponses
+  readonly projectData: unknown;
 }
 
-export default class FileWriter extends EventEmitter {
+export default class FileWriter extends flow.AbstractProject {
   private outputDir: string;
-  private projectData: flow.CollectedResponses;
-  private intentMap: IntentMap;
+  private intentMap: any;
   private messageCollector: Function;
-  private getMessage: Function;
   private stories: { [intentName: string]: string[] };
   /**
    * Creates instance of FileWriter
    * @param config configuration object containing an outputDir to hold generated
    * files, and projectData for the original botmock flow project
    */
-  constructor(config: Config) {
-    super();
+  constructor(config: IConfig) {
+    super({ projectData: config.projectData as ProjectData<typeof config.projectData> });
     this.outputDir = config.outputDir;
-    this.projectData = config.projectData;
-    this.getMessage = (id: string): flow.Message => (
-      this.projectData.board.board.messages.find((message: flow.Message) => message.message_id === id)
-    );
     this.intentMap = utils.createIntentMap(this.projectData.board.board.messages, this.projectData.intents);
     this.messageCollector = utils.createMessageCollector(this.intentMap, this.getMessage);
     this.stories = convertIntentStructureToStories({
@@ -49,7 +44,7 @@ export default class FileWriter extends EventEmitter {
   }
   /**
    * Gets array containing the unique action names in the project
-   * @returns string[]
+   * @returns unique action names
    */
   private getUniqueActionNames(): string[] {
     return Object.keys(
@@ -74,6 +69,7 @@ export default class FileWriter extends EventEmitter {
       .reduce((acc, actionName: string) => {
         const PREFIX_LENGTH = 6;
         const message = this.getMessage(actionName.slice(PREFIX_LENGTH));
+        // @ts-ignore
         const collectedMessages = this.messageCollector(message.next_message_ids).map(this.getMessage);
         return {
           ...acc,
@@ -118,11 +114,12 @@ export default class FileWriter extends EventEmitter {
    * Writes yml domain file
    * @returns Promise<void>
    */
-  public async createYml(): Promise<void> {
+  private async createYml(): Promise<void> {
     const outputFilePath = join(this.outputDir, "domain.yml");
     const firstLine = `# generated ${new Date().toLocaleString()}`;
     const data = toYAML({
       intents: this.projectData.intents.map((intent: flow.Intent) => intent.name),
+      // @ts-ignore
       entities: this.projectData.variables.map((entity: flow.Variable) => entity.name.replace(/\s/, "")),
       actions: this.getUniqueActionNames(),
       templates: this.createTemplates()
@@ -155,6 +152,7 @@ export default class FileWriter extends EventEmitter {
     const context: string[] = [];
     const seenIds: string[] = [];
     (function unwindFromMessageId(messageId: string) {
+      // @ts-ignore
       const { previous_message_ids: prevIds } = getMessage(messageId);
       let messageFollowingIntent: any;
       if ((messageFollowingIntent = prevIds.find(prev => intentMap.get(prev.message_id)))) {
@@ -207,10 +205,16 @@ export default class FileWriter extends EventEmitter {
   }
   /**
    * Writes markdown files within outputDir
-   * @returns Promise<void>
    */
-  public async createMd(): Promise<void> {
+  private async createMd(): Promise<void> {
     await this.writeIntentFile();
     await this.writeStoriesFile();
+  }
+  /**
+   * Writes all files produced by script
+   */
+  public async write(): Promise<void> {
+    await this.createMd();
+    await this.createYml();
   }
 }
