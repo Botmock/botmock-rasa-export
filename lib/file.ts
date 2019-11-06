@@ -107,20 +107,17 @@ export default class FileWriter extends flow.AbstractProject {
           }, [])
         }
       }, {});
-    // console.log(actionNameContent);
     return actionNameContent;
   }
   /**
    * Writes yml domain file
-   * @returns Promise<void>
    */
   private async createYml(): Promise<void> {
     const outputFilePath = join(this.outputDir, "domain.yml");
     const firstLine = `# generated ${new Date().toLocaleString()}`;
     const data = toYAML({
-      intents: this.projectData.intents.map((intent: flow.Intent) => intent.name),
-      // @ts-ignore
-      entities: this.projectData.variables.map((entity: flow.Variable) => entity.name.replace(/\s/, "")),
+      intents: this.projectData.intents.map(intent => intent.name),
+      entities: this.projectData.variables.map(variable => variable.name.replace(/\s/, "")),
       actions: this.getUniqueActionNames(),
       templates: this.createTemplates()
     });
@@ -131,7 +128,6 @@ export default class FileWriter extends flow.AbstractProject {
   }
 /**
  * Writes intent markdown file
- * @returns Promise<void>
  */
   private async writeIntentFile(): Promise<void> {
     const { intents, entities } = this.projectData;
@@ -145,7 +141,6 @@ export default class FileWriter extends flow.AbstractProject {
   /**
    * Gets the lineage of intents implied by a given message id
    * @param messageId message id of a message connected by an intent
-   * @returns string[]
    */
   private getIntentLineageForMessage(messageId: string): string[] {
     const { getMessage, intentMap, projectData } = this;

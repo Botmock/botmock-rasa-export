@@ -1,17 +1,16 @@
 import * as flow from "@botmock-api/flow";
-import { IntentMap } from "./file"
 
 interface IntentObj {
-  intentMap: IntentMap;
-  messageCollector: Function;
+  readonly messageCollector: Function;
+  readonly intentMap: flow.SegmentizedStructure;
   readonly intents: flow.Intent[];
   readonly messages: flow.Message[];
 }
 
 /**
  * Creates object associating intent names with the titles of blocks that flow from them
- * @param intentObj Intent object that describes relation between messages and intents
- * @returns Stories
+ * @param intentObj map relating ids of messages and ids of intents connected to them
+ * @returns stories as an object
  */
 export function convertIntentStructureToStories(intentObj: IntentObj): { [intent: string]: string[] } {
   const { messages, intents, intentMap, messageCollector } = intentObj;
