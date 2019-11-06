@@ -1,12 +1,12 @@
 import { wrapEntitiesWithChar } from "@botmock-api/text";
 import * as utils from "@botmock-api/utils";
+import * as flow from "@botmock-api/flow";
 import uuid from "uuid/v4";
 import { writeFile, mkdirp } from "fs-extra";
 import { stringify as toYAML } from "yaml";
 import { EventEmitter } from "events";
 import { join } from "path";
 import { EOL } from "os";
-import * as Assets from "./types";
 import { genIntents } from "./nlu";
 import { convertIntentStructureToStories } from "./intent";
 
@@ -16,12 +16,12 @@ type Templates = { [actionName: string]: { [type: string]: any } };
 
 interface Config {
   readonly outputDir: string;
-  readonly projectData: Assets.CollectedResponses
+  readonly projectData: flow.CollectedResponses
 }
 
 export default class FileWriter extends EventEmitter {
   private outputDir: string;
-  private projectData: Assets.CollectedResponses;
+  private projectData: flow.CollectedResponses;
   private intentMap: IntentMap;
   private messageCollector: Function;
   private getMessage: Function;
@@ -35,8 +35,8 @@ export default class FileWriter extends EventEmitter {
     super();
     this.outputDir = config.outputDir;
     this.projectData = config.projectData;
-    this.getMessage = (id: string): Assets.Message => (
-      this.projectData.board.board.messages.find((message: Assets.Message) => message.message_id === id)
+    this.getMessage = (id: string): flow.Message => (
+      this.projectData.board.board.messages.find((message: flow.Message) => message.message_id === id)
     );
     this.intentMap = utils.createIntentMap(this.projectData.board.board.messages, this.projectData.intents);
     this.messageCollector = utils.createMessageCollector(this.intentMap, this.getMessage);
@@ -77,7 +77,7 @@ export default class FileWriter extends EventEmitter {
         const collectedMessages = this.messageCollector(message.next_message_ids).map(this.getMessage);
         return {
           ...acc,
-          [actionName]: [message, ...collectedMessages].reduce((accu, message: Assets.Message) => {
+          [actionName]: [message, ...collectedMessages].reduce((accu, message: flow.Message) => {
             let payload: string | {};
             switch (message.message_type) {
               // case "api":
@@ -122,8 +122,8 @@ export default class FileWriter extends EventEmitter {
     const outputFilePath = join(this.outputDir, "domain.yml");
     const firstLine = `# generated ${new Date().toLocaleString()}`;
     const data = toYAML({
-      intents: this.projectData.intents.map((intent: Assets.Intent) => intent.name),
-      entities: this.projectData.variables.map((entity: Assets.Variable) => entity.name.replace(/\s/, "")),
+      intents: this.projectData.intents.map((intent: flow.Intent) => intent.name),
+      entities: this.projectData.variables.map((entity: flow.Variable) => entity.name.replace(/\s/, "")),
       actions: this.getUniqueActionNames(),
       templates: this.createTemplates()
     });
@@ -158,7 +158,7 @@ export default class FileWriter extends EventEmitter {
       const { previous_message_ids: prevIds } = getMessage(messageId);
       let messageFollowingIntent: any;
       if ((messageFollowingIntent = prevIds.find(prev => intentMap.get(prev.message_id)))) {
-        const { name: nameOfIntent } = projectData.intents.find((intent: Assets.Intent) => (
+        const { name: nameOfIntent } = projectData.intents.find((intent: flow.Intent) => (
           intent.id === intentMap.get(messageFollowingIntent.message_id)[0]
         ));
         if (typeof nameOfIntent !== "undefined") {
@@ -191,7 +191,7 @@ export default class FileWriter extends EventEmitter {
         const lineage: string[] = [
           ...this.getIntentLineageForMessage(idOfMessageConnectedByIntent),
           ...this.intentMap.get(idOfMessageConnectedByIntent).map((intentId: string) => (
-            this.projectData.intents.find((intent: Assets.Intent) => intent.id === intentId).name
+            this.projectData.intents.find((intent: flow.Intent) => intent.id === intentId).name
           ))
         ];
         const path: string[] = lineage.map((intentName: string) => {

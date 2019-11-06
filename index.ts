@@ -1,16 +1,14 @@
 import "dotenv/config";
 import * as Sentry from "@sentry/node";
-import { RewriteFrames } from "@sentry/integrations";
-// import * as Botmock from "@botmock-api/integrations";
+// import { RewriteFrames } from "@sentry/integrations";
+import { Batcher } from "@botmock-api/client";
+import { default as log } from "@botmock-api/log";
 import { remove, mkdirp } from "fs-extra";
 import { join } from "path";
+import { SENTRY_DSN } from "./lib/constants";
+import { default as FileWriter } from "./lib/file";
 // @ts-ignore
 import pkg from "./package.json";
-import { default as APIWrapper } from "./lib/project";
-import { default as FileWriter } from "./lib/file";
-import { SENTRY_DSN } from "./lib/constants";
-import { log } from "./lib/log";
-import * as Assets from "./lib/types";
 
 declare global {
   namespace NodeJS {
@@ -25,9 +23,9 @@ global.__rootdir__ = __dirname || process.cwd();
 Sentry.init({
   dsn: SENTRY_DSN,
   release: `${pkg.name}@${pkg.version}`,
-  integrations: [new RewriteFrames({
-    root: global.__rootdir__
-  })],
+  // integrations: [new RewriteFrames({
+  //   root: global.__rootdir__
+  // })],
   // beforeSend(event): Sentry.Event {
   //   if (event.user.email) {
   //     delete event.user.email;
@@ -47,25 +45,25 @@ async function main(args: string[]): Promise<void> {
     log("recreating output directory");
     await remove(outputDir);
     await mkdirp(outputDir);
-    const apiWrapper = new APIWrapper({
+    log("fetching project data");
+    const { data: projectData } = await new Batcher({
       token: process.env.BOTMOCK_TOKEN,
       teamId: process.env.BOTMOCK_TEAM_ID,
       projectId: process.env.BOTMOCK_PROJECT_ID,
       boardId: process.env.BOTMOCK_BOARD_ID,
-    });
-    apiWrapper.on("asset-fetched", (assetName: string) => {
-      log(`fetched ${assetName}`);
-    });
-    apiWrapper.on("error", (err: Error) => {
-      throw err;
-    });
-    log("fetching botmock assets");
-    const projectData: Assets.CollectedResponses = await apiWrapper.fetch();
+    }).batchRequest([
+      "project",
+      "board",
+      "intents",
+      "entities",
+      "variables"
+    ]);
+    log("writing file");
     const writer = new FileWriter({ outputDir, projectData });
     await writer.createYml();
     await writer.createMd();
   } catch (err) {
-    log(err.stack, { hasError: true });
+    log(err.stack, { isError: true });
     throw err;
   }
   log("done");

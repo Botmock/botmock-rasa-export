@@ -1,9 +1,9 @@
+import * as flow from "@botmock-api/flow";
 import { EOL } from "os"
-import * as Assets from "./types";
 
 interface Config {
-  readonly intents: Assets.Intent[];
-  readonly entities: Assets.Entity[];
+  readonly intents: flow.Intent[];
+  readonly entities: flow.Entity[];
 }
 
 /**
@@ -12,10 +12,10 @@ interface Config {
  * @returns string
  */
 export function genIntents({ intents, entities }: Config): string {
-  const generateExample = ({ text, variables }: Assets.Utterance, entityList: Assets.Entity[]): string => {
+  const generateExample = ({ text, variables }: flow.Utterance, entityList: flow.Entity[]): string => {
     let str: string = text;
     if (variables) {
-      variables.forEach(({ name, entity: variableId }: Partial<Assets.Variable>) => {
+      variables.forEach(({ name, entity: variableId }: Partial<flow.Variable>) => {
         // side effect: replaces Botmock variable with Rasa entity
         let search = new RegExp(name, "gi");
         const formattedName = name
@@ -79,6 +79,6 @@ ${lookupArr.join(EOL)}
     }
   };
   // return the file to be written as a string
-  return `${intents.map((intent: Assets.Intent, i: number) => generateIntent(intent, entities, i)).join(EOL)}
+  return `${intents.map((intent: flow.Intent, i: number) => generateIntent(intent, entities, i)).join(EOL)}
 ${entities.map(entity => generateEntity(entity)).join(EOL)}`;
 }

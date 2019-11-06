@@ -1,11 +1,11 @@
+import * as flow from "@botmock-api/flow";
 import { IntentMap } from "./file"
-import * as Assets from "./types";
 
 interface IntentObj {
   intentMap: IntentMap;
   messageCollector: Function;
-  readonly intents: Assets.Intent[];
-  readonly messages: Assets.Message[];
+  readonly intents: flow.Intent[];
+  readonly messages: flow.Message[];
 }
 
 /**
@@ -15,7 +15,7 @@ interface IntentObj {
  */
 export function convertIntentStructureToStories(intentObj: IntentObj): { [intent: string]: string[] } {
   const { messages, intents, intentMap, messageCollector } = intentObj;
-  const getMessage = (id: string): Assets.Message | void => (
+  const getMessage = (id: string): flow.Message | void => (
     messages.find(message => message.message_id === id)
   );
   return Array.from(intentMap).reduce(
@@ -23,14 +23,14 @@ export function convertIntentStructureToStories(intentObj: IntentObj): { [intent
       ...acc,
       ...connectedIntentIds.reduce((accu, id: string) => {
         const message: any = getMessage(idOfMessageConnectedByIntent);
-        const intent: Assets.Intent = intents.find(intent => intent.id === id);
+        const intent: flow.Intent = intents.find(intent => intent.id === id);
         if (typeof intent !== "undefined") {
           return {
             ...accu,
             [intent.name]: [
               message,
               ...messageCollector(message.next_message_ids).map(getMessage)
-            ].map((message: Assets.Message) => message.message_id)
+            ].map((message: flow.Message) => message.message_id)
           };
         } else {
           return accu;
