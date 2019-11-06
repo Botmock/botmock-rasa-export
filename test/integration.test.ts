@@ -1,15 +1,22 @@
-import { remove } from "fs-extra";
+import { remove, mkdirp } from "fs-extra";
+import { EOL, tmpdir } from "os";
 import { execSync } from "child_process";
 import { join } from "path";
-import { EOL } from "os";
+
+let execution: unknown;
+const pathToDefaultOutputDirectory = join(tmpdir(), "output");
+
+beforeEach(async () => {
+  await mkdirp(pathToDefaultOutputDirectory);
+  execution = execSync("npm start");
+});
+
+afterEach(async () => {
+  await remove(pathToDefaultOutputDirectory);
+});
 
 describe("run", () => {
-  const pathToDefaultOutputDirectory = join(process.cwd(), "output");
-  afterAll(async () => {
-    await remove(pathToDefaultOutputDirectory);
-  });
   test("outputs correct number of newlines", () => {
-    const res = execSync("npm start");
-    expect(res.toString().split(EOL).length).toBeGreaterThanOrEqual(8);
+    expect(execution.toString().split(EOL).length).toBeGreaterThanOrEqual(8);
   });
 });
