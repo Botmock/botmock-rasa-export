@@ -1,6 +1,4 @@
 import { wrapEntitiesWithChar } from "@botmock-api/text";
-// @ts-ignore
-import * as utils from "@botmock-api/utils";
 import * as flow from "@botmock-api/flow";
 import uuid from "uuid/v4";
 import { writeFile, mkdirp } from "fs-extra";
@@ -9,7 +7,6 @@ import { stringify as toYAML } from "yaml";
 import { join } from "path";
 import { EOL } from "os";
 import { genIntents } from "./nlu";
-import { convertIntentStructureToStories } from "./intent";
 
 namespace Rasa {}
 
@@ -38,18 +35,13 @@ export default class FileWriter extends flow.AbstractProject {
     super({ projectData: config.projectData as ProjectData<typeof config.projectData> });
     this.outputDir = config.outputDir;
     this.boardStructureByMessages = this.segmentizeBoardFromMessages();
-    this.stories = convertIntentStructureToStories({
-      intents: this.projectData.intents,
-      intentMap: this.intentMap,
-      messageCollector: this.gatherMessagesUpToNextIntent,
-      messages: this.projectData.board.board.messages
-    });
+    this.stories = this.createStoriesFromIntentStructure();
   }
   /**
    * Gets array containing the unique action names in the project
    * @returns unique action names
    */
-  private getUniqueActionNames(): string[] {
+  private getUniqueActionNames(): ReadonlyArray<string> {
     return Object.keys(
       Object.values(this.stories)
         .reduce((acc, values: string[]) => {
@@ -57,11 +49,37 @@ export default class FileWriter extends flow.AbstractProject {
             ...acc,
             ...values.reduce((accu, value) => ({
               ...accu,
-              [value]: {}
+              [value]: void 0
             }), {})
           }
         }, {}))
       .map(action => `utter_${action}`);
+  }
+  /**
+   * Creates object associating intent names with the titles of blocks that flow from them
+   * @returns stories as an object
+   */
+  private createStoriesFromIntentStructure(): { [intent: string]: string[] } {
+    const { intents } = this.projectData;
+    return Array.from(this.boardStructureByMessages).reduce(
+      (acc, [idOfMessageConnectedByIntent, connectedIntentIds]) => ({
+        ...acc,
+        ...connectedIntentIds.reduce((accu, id: string) => {
+          const message: any = this.getMessage(idOfMessageConnectedByIntent);
+          const intent = intents.find(intent => intent.id === id) as flow.Intent;
+          if (typeof intent !== "undefined") {
+            return {
+              ...accu,
+              [intent.name]: [message, ...this.gatherMessagesUpToNextIntent(message)]
+                .map((message: flow.Message) => message.message_id)
+            };
+          } else {
+            return accu;
+          }
+        }, {})
+      }),
+      {}
+    );
   }
   /**
    * Creates object describing templates for the project
