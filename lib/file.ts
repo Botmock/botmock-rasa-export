@@ -1,15 +1,21 @@
 import { wrapEntitiesWithChar } from "@botmock-api/text";
+// @ts-ignore
 import * as utils from "@botmock-api/utils";
 import * as flow from "@botmock-api/flow";
 import uuid from "uuid/v4";
 import { writeFile, mkdirp } from "fs-extra";
+// @ts-ignore
 import { stringify as toYAML } from "yaml";
 import { join } from "path";
 import { EOL } from "os";
 import { genIntents } from "./nlu";
 import { convertIntentStructureToStories } from "./intent";
 
-export namespace Rasa {}
+namespace Rasa {}
+
+namespace Botmock {
+  export enum JumpTypes {}
+}
 
 export type ProjectData<T> = T extends Promise<infer K> ? K : any;
 
@@ -78,7 +84,8 @@ export default class FileWriter extends flow.AbstractProject {
             switch (message.message_type) {
               // case "api":
               case "jump":
-                const { value, label, jumpType } = JSON.parse(message.payload.selectedResult)
+                // @ts-ignore
+                const { label, jumpType } = JSON.parse(message.payload.selectedResult)
                 if (jumpType === "node") {
                   payload = `jumped to block ${label}`;
                 } else {
@@ -86,14 +93,17 @@ export default class FileWriter extends flow.AbstractProject {
                 }
                 break;
               case "image":
+                // @ts-ignore
                 payload = message.payload.image_url;
                 break;
               case "button":
               case "quick_replies":
+                // @ts-ignore
                 payload = (message.payload.quick_replies || message.payload.buttons)
                   .map(({ title, payload }) => ({ buttons: { title, payload } }));
                 break;
               default:
+                // @ts-ignore
                 const payloadValue = message.payload[message.message_type];
                 payload = typeof payloadValue !== "string" ? JSON.stringify(payloadValue) : payloadValue;
             }
@@ -150,7 +160,9 @@ export default class FileWriter extends flow.AbstractProject {
       // @ts-ignore
       const { previous_message_ids: prevIds } = getMessage(messageId);
       let messageFollowingIntent: any;
+      // @ts-ignore
       if ((messageFollowingIntent = prevIds.find(prev => intentMap.get(prev.message_id)))) {
+        // @ts-ignore
         const { name: nameOfIntent } = projectData.intents.find((intent: flow.Intent) => (
           intent.id === intentMap.get(messageFollowingIntent.message_id)[0]
         ));
@@ -180,10 +192,12 @@ export default class FileWriter extends flow.AbstractProject {
     const outputFilePath = join(this.outputDir, "data", "stories.md");
     const OPENING_LINE = `<!-- generated ${new Date().toLocaleString()} -->`;
     const data = Array.from(this.intentMap.keys())
+      // @ts-ignore
       .reduce((acc, idOfMessageConnectedByIntent: string) => {
         const lineage: string[] = [
           ...this.getIntentLineageForMessage(idOfMessageConnectedByIntent),
           ...this.intentMap.get(idOfMessageConnectedByIntent).map((intentId: string) => (
+            // @ts-ignore
             this.projectData.intents.find((intent: flow.Intent) => intent.id === intentId).name
           ))
         ];
