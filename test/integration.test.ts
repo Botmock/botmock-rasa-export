@@ -1,25 +1,32 @@
-import { remove, mkdirp, readFile, outputFile } from "fs-extra";
-import { EOL, tmpdir } from "os";
+import "dotenv/config";
+import { remove, mkdirp, readFile, readdir } from "fs-extra";
 import { execSync } from "child_process";
+import { EOL } from "os";
 import { join } from "path";
-import { default as FileWriter } from "../lib/file";
 import { projectData } from "./fixtures";
+import { default as FileWriter } from "../lib/file";
 
-const outputDir = join(tmpdir(), "output");
+const outputDir = join(process.cwd(), "output");
 
 describe("run", () => {
   let execution: unknown;
   beforeEach(async () => {
-    await mkdirp(outputDir);
     execution = execSync("npm start");
   });
 
   afterEach(async () => {
     await remove(outputDir);
   });
-  test.todo("all required slots are present in stories file");
+  test("data directory has correct contents", async () => {
+    const data = await readdir(join(outputDir, "data"));
+    expect(data).toEqual(["nlu.md", "stories.md"]);
+  });
+  test("all required slots are present in stories file", async () => {
+    const stories = await readFile(join(outputDir, "data", "stories.md"), "utf8");
+    expect(stories.endsWith("- slot{\"thing\": \"thing\"}" + EOL)).toBe(true);
+  });
   test.todo("all actions implied by project data are present in domain file");
-  test("outputs correct number of newlines", () => {
+  test("output has correct format", () => {
     // @ts-ignore
     expect(execution.toString().split(EOL).length).toBeGreaterThanOrEqual(8);
   });
