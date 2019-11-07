@@ -153,13 +153,12 @@ export default class FileWriter extends flow.AbstractProject {
       }, {});
   }
   /**
-   * Represent all required slots for project as an object
+   * Represent all required slots as an array of objects able to be consumed as yml
    */
-  private representRequiredSlotsAsObject(): {}[] | void {
+  private representRequiredSlots(): {}[] | void {
     const uniqueNamesOfRequiredSlots = Array.from(this.representRequirementsForIntents())
-      // @ts-ignore
       .reduce((acc, pair: [string, any]) => {
-        const [idOfIntent, requiredSlots] = pair;
+        const [, requiredSlots] = pair;
         return {
           ...acc,
           ...requiredSlots.reduce((accu: any, slot: flow.Slot) => {
@@ -169,7 +168,7 @@ export default class FileWriter extends flow.AbstractProject {
             }
             return {
               ...accu,
-              [variable.name]: variable.default_value,
+              [variable.name]: variable.default_value || void 0,
             }
           }, {})
         };
@@ -191,7 +190,7 @@ export default class FileWriter extends flow.AbstractProject {
       entities: this.projectData.variables.map(variable => variable.name.replace(/\s/, "")),
       actions: this.getUniqueActionNames(),
       templates: this.createTemplates(),
-      slots: this.representRequiredSlotsAsObject(),
+      slots: this.representRequiredSlots(),
     });
     return await writeFile(outputFilePath, `${firstLine}${EOL}${data}`);
   }
@@ -256,7 +255,6 @@ ${entities.map(entity => nlu.generateEntityContent(entity)).join(EOL)}`;
    * is a content block in the relevant group between the intents.
    */
   private async writeStoriesFile(): Promise<void> {
-    const outputFilePath = join(this.outputDir, "data", "stories.md");
     const data = Array.from(this.boardStructureByMessages.keys())
       .reduce((acc, idOfMessageConnectedByIntent: string) => {
         const idsOfConnectedIntents = this.boardStructureByMessages.get(idOfMessageConnectedByIntent) as any[];
@@ -267,16 +265,24 @@ ${entities.map(entity => nlu.generateEntityContent(entity)).join(EOL)}`;
             return name;
           }),
         ];
-        const path: string[] = lineage.map((intentName: string) => {
+        const paths: string[] = lineage.map((intentName: string) => {
+          const { id: idOfIntent } = this.projectData.intents.find(intent => intent.name === intentName) as flow.Intent;
+          // @ts-ignore
+          const [firstRequiredSlot] = this.representRequirementsForIntents().get(idOfIntent);
+          let slot: string = "";
+          if (firstRequiredSlot) {
+            const variable = this.projectData.variables.find(variable => variable.id === firstRequiredSlot.variable_id);
+            slot = `{"${variable?.name}": "${variable?.default_value}"}`;
+          }
           const actionsUnderIntent = this.stories[intentName].map((actionName: string) => (
             `  - utter_${actionName}`
-          )).join(EOL);
-          return `* ${intentName.replace(/\s/g, "").toLowerCase()}${EOL}${actionsUnderIntent}`;
+          )).concat(slot ? `  - slot${slot}`: []).join(EOL);
+          return `* ${intentName.replace(/\s/g, "").toLowerCase()}${slot}${EOL}${actionsUnderIntent}`;
         });
         const storyName = `## ${uuid()}`;
-        return acc + EOL + storyName + EOL + path.join(EOL) + EOL;
+        return acc + EOL + storyName + EOL + paths.join(EOL) + EOL;
       }, `<!-- generated ${new Date().toLocaleString()} -->`);
-    await writeFile(outputFilePath, data);
+    await writeFile(join(this.outputDir, "data", "stories.md"), data);
   }
   /**
    * Writes markdown files within outputDir
