@@ -1,17 +1,23 @@
-import { wrapEntitiesWithChar } from "@botmock-api/text";
-import * as flow from "@botmock-api/flow";
 import uuid from "uuid/v4";
+import * as flow from "@botmock-api/flow";
+import { wrapEntitiesWithChar } from "@botmock-api/text";
 import { writeFile, mkdirp } from "fs-extra";
-// @ts-ignore
 import { stringify as toYAML } from "yaml";
 import { join } from "path";
 import { EOL } from "os";
 import { genIntents } from "./nlu";
 
-namespace Rasa {}
+namespace Rasa {
+  export type Template = {};
+  export type Story = {};
+  export type Action = {};
+}
 
 namespace Botmock {
-  export enum JumpTypes {}
+  export enum JumpTypes {
+    node = "node",
+    project = "project",
+  }
 }
 
 export type ProjectData<T> = T extends Promise<infer K> ? K : any;
@@ -26,16 +32,27 @@ export default class FileWriter extends flow.AbstractProject {
   private intentMap: any;
   private boardStructureByMessages: flow.SegmentizedStructure;
   private stories: { [intentName: string]: string[] };
+  private static instance: FileWriter;
   /**
    * Creates instance of FileWriter
    * @param config configuration object containing an outputDir to hold generated
    * files, and projectData for the original botmock flow project
    */
-  constructor(config: IConfig) {
+  private constructor(config: IConfig) {
     super({ projectData: config.projectData as ProjectData<typeof config.projectData> });
     this.outputDir = config.outputDir;
     this.boardStructureByMessages = this.segmentizeBoardFromMessages();
     this.stories = this.createStoriesFromIntentStructure();
+  }
+  /**
+   * Get singleton class
+   * @returns only existing instance of the class
+   */
+  public static getInstance(config: IConfig): FileWriter {
+    if (!FileWriter.instance) {
+      FileWriter.instance = new FileWriter(config);
+    }
+    return FileWriter.instance;
   }
   /**
    * Gets array containing the unique action names in the project
@@ -56,22 +73,22 @@ export default class FileWriter extends flow.AbstractProject {
       .map(action => `utter_${action}`);
   }
   /**
-   * Creates object associating intent names with the titles of blocks that flow from them
+   * Creates object associating intent names with the ids of blocks that flow from them
    * @returns stories as an object
    */
-  private createStoriesFromIntentStructure(): { [intent: string]: string[] } {
+  private createStoriesFromIntentStructure(): { [intentName: string]: string[] } {
     const { intents } = this.projectData;
     return Array.from(this.boardStructureByMessages).reduce(
-      (acc, [idOfMessageConnectedByIntent, connectedIntentIds]) => ({
+      (acc, [idOfMessageConnectedByIntent, idsOfConnectedIntents]: [string, string[]]) => ({
         ...acc,
-        ...connectedIntentIds.reduce((accu, id: string) => {
+        ...idsOfConnectedIntents.reduce((accu, id: string) => {
           const message: any = this.getMessage(idOfMessageConnectedByIntent);
           const intent = intents.find(intent => intent.id === id) as flow.Intent;
           if (typeof intent !== "undefined") {
             return {
               ...accu,
               [intent.name]: [message, ...this.gatherMessagesUpToNextIntent(message)]
-                .map((message: flow.Message) => message.message_id)
+                .map(message => message.message_id)
             };
           } else {
             return accu;
@@ -83,18 +100,18 @@ export default class FileWriter extends flow.AbstractProject {
   }
   /**
    * Creates object describing templates for the project
-   * @returns Templates
+   * @returns nested object containing content block data
    */
   private createTemplates(): { [actionName: string]: { [type: string]: any } } {
-    const actionNameContent = this.getUniqueActionNames()
+    return this.getUniqueActionNames()
       .reduce((acc, actionName: string) => {
-        const PREFIX_LENGTH = 6;
-        const message = this.getMessage(actionName.slice(PREFIX_LENGTH));
-        // @ts-ignore
-        const collectedMessages = this.messageCollector(message.next_message_ids).map(this.getMessage);
+        const ACTION_PREFIX_LENGTH = 6;
+        const message = this.getMessage(actionName.slice(ACTION_PREFIX_LENGTH)) as flow.Message;
+        // console.log(message);
         return {
           ...acc,
-          [actionName]: [message, ...collectedMessages].reduce((accu, message: flow.Message) => {
+          // @ts-ignore
+          [actionName]: [message, ...this.gatherMessagesUpToNextIntent(message)].reduce((accu, message: flow.Message) => {
             let payload: string | {};
             switch (message.message_type) {
               // case "delay":
@@ -135,7 +152,6 @@ export default class FileWriter extends flow.AbstractProject {
           }, [])
         }
       }, {});
-    return actionNameContent;
   }
   /**
    * Writes yml domain file
@@ -203,8 +219,7 @@ export default class FileWriter extends flow.AbstractProject {
   private async writeStoriesFile(): Promise<void> {
     const outputFilePath = join(this.outputDir, "data", "stories.md");
     const OPENING_LINE = `<!-- generated ${new Date().toLocaleString()} -->`;
-    const data = Array.from(this.intentMap.keys())
-      // @ts-ignore
+    const data = Array.from(this.boardStructureByMessages.keys())
       .reduce((acc, idOfMessageConnectedByIntent: string) => {
         const lineage: string[] = [
           ...this.getIntentLineageForMessage(idOfMessageConnectedByIntent),
