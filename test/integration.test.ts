@@ -1,4 +1,4 @@
-import { remove, mkdirp, readFile } from "fs-extra";
+import { remove, mkdirp, readFile, outputFile } from "fs-extra";
 import { EOL, tmpdir } from "os";
 import { execSync } from "child_process";
 import { join } from "path";
@@ -33,6 +33,18 @@ describe("files", () => {
     const file = await readFile(join(outputDir, "domain.yml"), "utf8");
     expect(file.split(EOL)).toHaveLength(11);
   });
-  test.todo("all required slots are present in domain file");
+  test("all fields are present in domain file", async () => {
+    const file = await readFile(join(outputDir, "domain.yml"), "utf8");
+    const lines = file.split(EOL).slice(1);
+    const fieldNames = new Set(["intents", "entities", "actions", "templates", "slots"]);
+    for (const line of lines) {
+      const possibleKey = line.match(/[a-z]+\:/);
+      if (!Object.is(possibleKey, null)) {
+        const [keyname] = possibleKey as any[];
+        expect(fieldNames.has(keyname.slice(0, -1))).toBe(true);
+      }
+    }
+  });
   test.todo("all required slots are present in stories file");
+  test.todo("all actions implied by project data are present in domain file");
 });

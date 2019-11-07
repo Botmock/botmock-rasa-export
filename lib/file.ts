@@ -1,7 +1,7 @@
 import uuid from "uuid/v4";
 import * as flow from "@botmock-api/flow";
 import { wrapEntitiesWithChar } from "@botmock-api/text";
-import { writeFile, mkdirp } from "fs-extra";
+import { writeFile, mkdirp, copyFileSync } from "fs-extra";
 import { stringify as toYAML } from "yaml";
 import { join } from "path";
 import { EOL } from "os";
@@ -155,7 +155,7 @@ export default class FileWriter extends flow.AbstractProject {
   /**
    * Represent all required slots as an array of objects able to be consumed as yml
    */
-  private representRequiredSlots(): {}[] | void {
+  private representRequiredSlots(): {}[] {
     const uniqueNamesOfRequiredSlots = Array.from(this.representRequirementsForIntents())
       .reduce((acc, pair: [string, any]) => {
         const [, requiredSlots] = pair;
@@ -173,11 +173,8 @@ export default class FileWriter extends flow.AbstractProject {
           }, {})
         };
       }, {});
-    if (Object.keys(uniqueNamesOfRequiredSlots).length) {
-      return Object.entries(uniqueNamesOfRequiredSlots)
-        .map(([slotName, defaultValue]) => ({ [slotName]: { type: Rasa.SlotTypes.text, initial_value: defaultValue } }));
-    }
-    return undefined;
+    return Object.entries(uniqueNamesOfRequiredSlots)
+      .map(([slotName, defaultValue]) => ({ [slotName]: { type: Rasa.SlotTypes.text, initial_value: defaultValue } }));
   }
   /**
    * Writes yml domain file
