@@ -8,9 +8,9 @@ import { EOL } from "os";
 import { genIntents } from "./nlu";
 
 namespace Rasa {
-  export type Template = {};
-  export type Story = {};
-  export type Action = {};
+  export enum SlotTypes {
+    text = "text",
+  }
 }
 
 namespace Botmock {
@@ -153,6 +153,34 @@ export default class FileWriter extends flow.AbstractProject {
       }, {});
   }
   /**
+   * Represent all required slots for project as an object
+   */
+  private representRequiredSlotsAsObject(): {}[] | void {
+    const uniqueNamesOfRequiredSlots = Array.from(this.representRequirementsForIntents())
+      // @ts-ignore
+      .reduce((acc, pair: [string, any]) => {
+        const [idOfIntent, requiredSlots] = pair;
+        return {
+          ...acc,
+          ...requiredSlots.reduce((accu: any, slot: flow.Slot) => {
+            const variable = this.projectData.variables.find(variable => variable.id === slot.variable_id);
+            if (!variable) {
+              return accu;
+            }
+            return {
+              ...accu,
+              [variable.name]: variable.default_value,
+            }
+          }, {})
+        };
+      }, {});
+    if (Object.keys(uniqueNamesOfRequiredSlots).length) {
+      return Object.entries(uniqueNamesOfRequiredSlots)
+        .map(([slotName, defaultValue]) => ({ [slotName]: { type: Rasa.SlotTypes.text, initial_value: defaultValue } }));
+    }
+    return undefined;
+  }
+  /**
    * Writes yml domain file
    */
   private async createYml(): Promise<void> {
@@ -162,7 +190,8 @@ export default class FileWriter extends flow.AbstractProject {
       intents: this.projectData.intents.map(intent => intent.name),
       entities: this.projectData.variables.map(variable => variable.name.replace(/\s/, "")),
       actions: this.getUniqueActionNames(),
-      templates: this.createTemplates()
+      templates: this.createTemplates(),
+      slots: this.representRequiredSlotsAsObject(),
     });
     return await writeFile(outputFilePath, `${firstLine}${EOL}${data}`);
   }

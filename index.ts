@@ -38,7 +38,7 @@ async function main(args: string[]): Promise<void> {
     "entities",
     "variables"
   ]);
-  log("writing file");
+  log("writing files");
   const writer = FileWriter.getInstance({ outputDir, projectData });
   await writer.write();
   log("done");
