@@ -5,7 +5,7 @@ import { writeFile, mkdirp } from "fs-extra";
 import { stringify as toYAML } from "yaml";
 import { join } from "path";
 import { EOL } from "os";
-import { genIntents } from "./nlu";
+import * as nlu from "./nlu";
 
 namespace Rasa {
   export enum SlotTypes {
@@ -195,14 +195,28 @@ export default class FileWriter extends flow.AbstractProject {
     });
     return await writeFile(outputFilePath, `${firstLine}${EOL}${data}`);
   }
-/**
- * Writes intent markdown file
- */
-  private async writeIntentFile(): Promise<void> {
+  /**
+   * Creates markdown content for intents
+   * @returns file contents as a string
+   */
+  private generateNLUFileContent(): string {
     const { intents, entities } = this.projectData;
+    return `${intents.map((intent: flow.Intent, i: number) => {
+      // @ts-ignore
+      const { id, name, utterances: examples, updated_at: { date: timestamp } } = intent;
+      return `${i !== 0 ? EOL : ""}<!-- ${timestamp} | ${id} -->
+## intent:${name.toLowerCase()}
+${examples.map((example: any) => nlu.generateExampleContent(example, entities)).join(EOL)}`;
+    }).join(EOL)}
+${entities.map(entity => nlu.generateEntityContent(entity)).join(EOL)}`;
+  }
+  /**
+   * Writes intent markdown file
+   */
+  private async writeIntentFile(): Promise<void> {
     const outputFilePath = join(this.outputDir, "data", "nlu.md");
     await mkdirp(join(this.outputDir, "data"));
-    await writeFile(outputFilePath, genIntents({ intents, entities }));
+    await writeFile(outputFilePath, this.generateNLUFileContent());
   }
   /**
    * Gets the lineage of intents implied by a given message id
