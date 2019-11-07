@@ -29,14 +29,12 @@ interface IConfig {
 
 export default class FileWriter extends flow.AbstractProject {
   private outputDir: string;
-  private intentMap: any;
   private boardStructureByMessages: flow.SegmentizedStructure;
   private stories: { [intentName: string]: string[] };
   private static instance: FileWriter;
   /**
    * Creates instance of FileWriter
-   * @param config configuration object containing an outputDir to hold generated
-   * files, and projectData for the original botmock flow project
+   * @param config configuration object
    */
   private constructor(config: IConfig) {
     super({ projectData: config.projectData as ProjectData<typeof config.projectData> });
@@ -107,35 +105,36 @@ export default class FileWriter extends flow.AbstractProject {
       .reduce((acc, actionName: string) => {
         const ACTION_PREFIX_LENGTH = 6;
         const message = this.getMessage(actionName.slice(ACTION_PREFIX_LENGTH)) as flow.Message;
-        // console.log(message);
         return {
           ...acc,
           // @ts-ignore
           [actionName]: [message, ...this.gatherMessagesUpToNextIntent(message)].reduce((accu, message: flow.Message) => {
-            let payload: string | {};
+            let payload: string | {} | void = {};
             switch (message.message_type) {
-              // case "delay":
-              // case "api":
+              case "delay":
+              case "api":
+                break;
               case "jump":
-                // @ts-ignore
-                const { label, jumpType } = JSON.parse(message.payload.selectedResult)
-                if (jumpType === "node") {
-                  payload = `jumped to block ${label}`;
-                } else {
-                  payload = `jumped to project ${label}`;
+                const { label, jumpType } = JSON.parse(message.payload?.selectedResult)
+                switch (jumpType) {
+                  case Botmock.JumpTypes.node:
+                    payload = `jumped to block ${label}`;
+                    break;
+                  case Botmock.JumpTypes.project:
+                    payload = `jumped to project ${label}`;
+                    break;
                 }
                 break;
               case "image":
-                // @ts-ignore
-                payload = message.payload.image_url;
+                payload = message.payload?.image_url;
                 break;
               case "button":
               case "quick_replies":
-                const key = (message.payload as object).hasOwnProperty("buttons")
+                const key = message.payload?.hasOwnProperty("buttons")
                   ? "buttons"
                   : "quick_replies";
                 // @ts-ignore
-                payload = message.payload[key].map(({ title, payload }) => ({ buttons: { title, payload } }));
+                payload = message.payload[key].map(({ title, payload }: any) => ({ buttons: { title, payload } }));
                 break;
               default:
                 // @ts-ignore
@@ -181,27 +180,25 @@ export default class FileWriter extends flow.AbstractProject {
    * @param messageId message id of a message connected by an intent
    */
   private getIntentLineageForMessage(messageId: string): string[] {
-    const { getMessage, intentMap, projectData } = this;
+    const self = this;
     const context: string[] = [];
     const seenIds: string[] = [];
     (function unwindFromMessageId(messageId: string) {
-      // @ts-ignore
-      const { previous_message_ids: prevIds } = getMessage(messageId);
-      let messageFollowingIntent: any;
-      // @ts-ignore
-      if ((messageFollowingIntent = prevIds.find(prev => intentMap.get(prev.message_id)))) {
-        // @ts-ignore
-        const { name: nameOfIntent } = projectData.intents.find((intent: flow.Intent) => (
-          intent.id === intentMap.get(messageFollowingIntent.message_id)[0]
-        ));
-        if (typeof nameOfIntent !== "undefined") {
-          context.push(nameOfIntent);
-        }
-      } else {
-        for (const { message_id: prevMessageId } of prevIds) {
-          if (!seenIds.includes(prevMessageId)) {
-            seenIds.push(prevMessageId);
-            unwindFromMessageId(prevMessageId);
+      const { previous_message_ids: previousMessageIds } = self.getMessage(messageId) as flow.Message;
+      if (typeof previousMessageIds !== "undefined") {
+        let messageFollowingIntent: any;
+        if ((messageFollowingIntent = previousMessageIds.find(m => self.boardStructureByMessages.get(m.message_id)))) {
+          const [idOfConnectedItent] = self.boardStructureByMessages.get(messageFollowingIntent.message_id) as [string];
+          const { name: nameOfIntent } = self.getIntent(idOfConnectedItent) as flow.Intent;
+          if (typeof nameOfIntent !== "undefined") {
+            context.push(nameOfIntent);
+          }
+        } else {
+          for (const { message_id: prevMessageId } of previousMessageIds) {
+            if (!seenIds.includes(prevMessageId)) {
+              seenIds.push(prevMessageId);
+              unwindFromMessageId(prevMessageId);
+            }
           }
         }
       }
@@ -214,19 +211,18 @@ export default class FileWriter extends flow.AbstractProject {
    * these are "paths"; each intent in a path is part of the lineage of intents
    * leading to the particular message that follows from an intent; each action
    * is a content block in the relevant group between the intents.
-   * @returns Promise<void>
    */
   private async writeStoriesFile(): Promise<void> {
     const outputFilePath = join(this.outputDir, "data", "stories.md");
-    const OPENING_LINE = `<!-- generated ${new Date().toLocaleString()} -->`;
     const data = Array.from(this.boardStructureByMessages.keys())
       .reduce((acc, idOfMessageConnectedByIntent: string) => {
-        const lineage: string[] = [
+        const idsOfConnectedIntents = this.boardStructureByMessages.get(idOfMessageConnectedByIntent) as any[];
+        const lineage = [
           ...this.getIntentLineageForMessage(idOfMessageConnectedByIntent),
-          ...this.intentMap.get(idOfMessageConnectedByIntent).map((intentId: string) => (
-            // @ts-ignore
-            this.projectData.intents.find((intent: flow.Intent) => intent.id === intentId).name
-          ))
+          ...idsOfConnectedIntents.map((intentId: string) => {
+            const { name } = this.getIntent(intentId) as flow.Intent;
+            return name;
+          }),
         ];
         const path: string[] = lineage.map((intentName: string) => {
           const actionsUnderIntent = this.stories[intentName].map((actionName: string) => (
@@ -236,7 +232,7 @@ export default class FileWriter extends flow.AbstractProject {
         });
         const storyName = `## ${uuid()}`;
         return acc + EOL + storyName + EOL + path.join(EOL) + EOL;
-      }, OPENING_LINE);
+      }, `<!-- generated ${new Date().toLocaleString()} -->`);
     await writeFile(outputFilePath, data);
   }
   /**

@@ -1,8 +1,8 @@
 import { join } from "path";
 import { tmpdir } from "os";
 import { remove, mkdirp, readFile, readdir } from "fs-extra";
-// import { default as FileWriter } from "../lib/file";
-// import { projectData } from "./fixtures";
+import { default as FileWriter } from "../lib/file";
+import { projectData } from "./fixtures";
 
 const outputDir = join(tmpdir(), "output");
 
@@ -15,6 +15,15 @@ afterAll(async () => {
   await remove(outputDir);
 });
 
-describe.skip("public methods", () => {});
+describe("file writer", () => {
+  let instance: FileWriter;
+  beforeEach(() => {
+    instance = FileWriter.getInstance({ projectData, outputDir });
+  });
+  test.todo("write method");
+});
 
-test.todo("");
+describe("slots", () => {
+  test.todo("all required slots are present in domain file");
+  test.todo("all required slots are present in nlu file");
+});
