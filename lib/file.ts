@@ -112,6 +112,9 @@ export default class FileWriter extends flow.AbstractProject {
             let payload: string | {} | void = {};
             switch (message.message_type) {
               case "delay":
+                // @ts-ignore
+                payload = `waiting for ${message.payload?.show_for} ms`;
+                break;
               case "api":
                 break;
               case "jump":
@@ -143,9 +146,9 @@ export default class FileWriter extends flow.AbstractProject {
             }
             return [
               ...accu,
-              (typeof payload === "string"
-                ? wrapEntitiesWithChar(payload, "{")
-                : JSON.stringify(payload, null, 2)
+              ...(typeof payload === "string"
+                ? [wrapEntitiesWithChar(payload, "{")]
+                : Array.isArray(payload) ? payload : Array.of(payload)
               )
             ];
           }, [])
