@@ -171,7 +171,9 @@ export default class FileWriter extends flow.AbstractProject {
                 payload = message.payload[key].map(({ title, payload }: any) => ({ buttons: { title, payload } }));
                 break;
               case "text":
-                payload = message.payload?.text;
+                payload = {
+                  text: wrapEntitiesWithChar(message.payload?.text as string, "{"),
+                };
                 break;
               default:
                 // @ts-ignore
@@ -180,10 +182,7 @@ export default class FileWriter extends flow.AbstractProject {
             }
             return [
               ...accu,
-              ...(typeof payload === "string"
-                ? [wrapEntitiesWithChar(payload, "{")]
-                : Array.isArray(payload) ? payload : Array.of(payload)
-              )
+              ...Array.isArray(payload) ? payload : Array.of(payload)
             ];
           }, [])
         }
