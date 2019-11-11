@@ -221,7 +221,7 @@ export default class FileWriter extends flow.AbstractProject {
     return `${intents.map((intent: flow.Intent, i: number) => {
       // @ts-ignore
       const { id, name: intentName, utterances: examples, updated_at: { date: timestamp } } = intent;
-      return `${i !== 0 ? EOL : ""}
+      return `${i !== 0 ? EOL : ""}<!-- ${new Date().toISOString()} -->
 ## intent:${this.sanitizeIntentName(intentName)}
 ${examples.map((example: any) => nlu.generateExampleContent(example, entities)).join(EOL)}`;
     }).join(EOL)}
@@ -297,9 +297,10 @@ ${entities.map(entity => nlu.generateEntityContent(entity)).join(EOL)}`;
           )).concat(slot ? `  - slot${slot}`: []).join(EOL);
           return `* ${this.sanitizeIntentName(intentName)}${slot}${EOL}${actionsUnderIntent}`;
         });
-        const storyName = `## ${uuid()}`;
+        const story = uuid();
+        const storyName = `## ${story}`;
         return acc + EOL + storyName + EOL + paths.join(EOL) + EOL;
-      }, "");
+      }, `<!-- ${new Date().toISOString()} -->`);
     await writeFile(join(this.outputDir, "data", "stories.md"), data);
   }
   /**
@@ -314,7 +315,7 @@ ${entities.map(entity => nlu.generateEntityContent(entity)).join(EOL)}`;
    */
   private async writeDomainFile(): Promise<void> {
     const outputFilePath = join(this.outputDir, "domain.yml");
-    const firstLine = `# generated ${new Date().toLocaleString()}`;
+    const firstLine = `# ${new Date().toISOString()}`;
     const data: any = {
       intents: this.projectData.intents.map(intent => this.sanitizeIntentName(intent.name)),
       entities: this.projectData.variables.map(variable => variable.name.replace(/\s/, "")),
