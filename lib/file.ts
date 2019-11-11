@@ -3,6 +3,8 @@ import * as flow from "@botmock-api/flow";
 import { wrapEntitiesWithChar } from "@botmock-api/text";
 import { writeFile, mkdirp, copyFileSync } from "fs-extra";
 import { stringify as toYAML } from "yaml";
+// @ts-ignore
+import { default as snakeCase } from "to-snake-case";
 import { join } from "path";
 import { EOL } from "os";
 import * as nlu from "./nlu";
@@ -212,21 +214,6 @@ export default class FileWriter extends flow.AbstractProject {
       .map(([slotName, defaultValue]) => ({ [slotName]: { type: Rasa.SlotTypes.text, initial_value: defaultValue } }));
   }
   /**
-   * Writes yml domain file
-   */
-  private async createYml(): Promise<void> {
-    const outputFilePath = join(this.outputDir, "domain.yml");
-    const firstLine = `# generated ${new Date().toLocaleString()}`;
-    const data = toYAML({
-      intents: this.projectData.intents.map(intent => intent.name),
-      entities: this.projectData.variables.map(variable => variable.name.replace(/\s/, "")),
-      actions: this.getUniqueActionNames(),
-      templates: this.createTemplates(),
-      slots: this.representRequiredSlots(),
-    });
-    return await writeFile(outputFilePath, `${firstLine}${EOL}${data}`);
-  }
-  /**
    * Creates markdown content for intents
    * @returns file contents as a string
    */
@@ -234,9 +221,9 @@ export default class FileWriter extends flow.AbstractProject {
     const { intents, entities } = this.projectData;
     return `${intents.map((intent: flow.Intent, i: number) => {
       // @ts-ignore
-      const { id, name, utterances: examples, updated_at: { date: timestamp } } = intent;
+      const { id, name: intentName, utterances: examples, updated_at: { date: timestamp } } = intent;
       return `${i !== 0 ? EOL : ""}<!-- ${timestamp} | ${id} -->
-## intent:${name.toLowerCase()}
+## intent:${this.sanitizeIntentName(intentName)}
 ${examples.map((example: any) => nlu.generateExampleContent(example, entities)).join(EOL)}`;
     }).join(EOL)}
 ${entities.map(entity => nlu.generateEntityContent(entity)).join(EOL)}`;
@@ -309,7 +296,7 @@ ${entities.map(entity => nlu.generateEntityContent(entity)).join(EOL)}`;
           const actionsUnderIntent = this.stories[intentName].map((actionName: string) => (
             `  - utter_${actionName}`
           )).concat(slot ? `  - slot${slot}`: []).join(EOL);
-          return `* ${intentName.replace(/\s/g, "").toLowerCase()}${slot}${EOL}${actionsUnderIntent}`;
+          return `* ${this.sanitizeIntentName(intentName)}${slot}${EOL}${actionsUnderIntent}`;
         });
         const storyName = `## ${uuid()}`;
         return acc + EOL + storyName + EOL + paths.join(EOL) + EOL;
@@ -317,17 +304,33 @@ ${entities.map(entity => nlu.generateEntityContent(entity)).join(EOL)}`;
     await writeFile(join(this.outputDir, "data", "stories.md"), data);
   }
   /**
-   * Writes markdown files within outputDir
+   * Formats given text
+   * @param text text to sanitize
    */
-  private async createMd(): Promise<void> {
-    await this.writeIntentFile();
-    await this.writeStoriesFile();
+  private sanitizeIntentName(text: string): string {
+    return snakeCase(text.replace(/\s/g, ""));
+  }
+  /**
+   * Writes yml domain file
+   */
+  private async writeDomainFile(): Promise<void> {
+    const outputFilePath = join(this.outputDir, "domain.yml");
+    const firstLine = `# generated ${new Date().toLocaleString()}`;
+    const data = toYAML({
+      intents: this.projectData.intents.map(intent => this.sanitizeIntentName(intent.name)),
+      entities: this.projectData.variables.map(variable => variable.name.replace(/\s/, "")),
+      actions: this.getUniqueActionNames(),
+      templates: this.createTemplates(),
+      slots: this.representRequiredSlots(),
+    });
+    return await writeFile(outputFilePath, `${firstLine}${EOL}${data}`);
   }
   /**
    * Writes all files produced by script
    */
   public async write(): Promise<void> {
-    await this.createMd();
-    await this.createYml();
+    await this.writeIntentFile();
+    await this.writeStoriesFile();
+    await this.writeDomainFile();
   }
 }
