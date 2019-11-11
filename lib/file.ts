@@ -111,6 +111,27 @@ export default class FileWriter extends flow.AbstractProject {
           [actionName]: [message, ...this.gatherMessagesUpToNextIntent(message)].reduce((accu, message: flow.Message) => {
             let payload: string | {} | void = {};
             switch (message.message_type) {
+              case "generic":
+                payload = {
+                  text: message.payload?.text,
+                  // @ts-ignore
+                  buttons: message.payload?.elements?.reduce((acc, element: any) => {
+                    const buttons: any[] = Array.isArray(element.buttons) ? element.buttons : Array.of(element.buttons);
+                    return [
+                      ...acc,
+                      buttons.reduce((accu, button) => {
+                        return {
+                          title: button.title,
+                          payload: button.payload,
+                        }
+                      }, {}),
+                    ]
+                  }, []),
+                };
+                break;
+              case "location":
+                payload = JSON.stringify(message.payload);
+                break;
               case "delay":
                 // @ts-ignore
                 payload = `waiting for ${message.payload?.show_for} ms`;
@@ -128,8 +149,16 @@ export default class FileWriter extends flow.AbstractProject {
                     break;
                 }
                 break;
+              case "webview":
               case "image":
-                payload = message.payload?.image_url;
+                const imageKeyName = message.message_type === "webview"
+                  ? "image"
+                  : "iamge_url";
+                payload = {
+                  text: message.payload?.text,
+                  // @ts-ignore
+                  image: message.payload[imageKeyName],
+                };
                 break;
               case "button":
               case "quick_replies":
@@ -138,6 +167,9 @@ export default class FileWriter extends flow.AbstractProject {
                   : "quick_replies";
                 // @ts-ignore
                 payload = message.payload[key].map(({ title, payload }: any) => ({ buttons: { title, payload } }));
+                break;
+              case "text":
+                payload = message.payload?.text;
                 break;
               default:
                 // @ts-ignore

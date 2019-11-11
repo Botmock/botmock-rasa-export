@@ -14,7 +14,6 @@ describe("run", () => {
   beforeEach(async () => {
     execution = execSync("npm start");
   });
-
   afterEach(async () => {
     await remove(outputDir);
   });
