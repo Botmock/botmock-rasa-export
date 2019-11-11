@@ -49,15 +49,13 @@ export function generateEntityContent(entity: flow.Entity & { updated_at?: any }
   const { id, name, data: values, updated_at: { date: timestamp } } = entity;
   const synonym_variance: number = values.reduce((count: number, { synonyms }: any) => count + synonyms.length, 0);
   if (synonym_variance < values.length) {
-    return `<!-- ${timestamp} | ${id} -->
-## lookup:${name.replace(/ |-/g, "_").toLowerCase()}${values.map(({ value, synonyms }: any) =>
+    return `## lookup:${name.replace(/ |-/g, "_").toLowerCase()}${values.map(({ value, synonyms }: any) => (
       synonyms.length ? `- ${value}\n- ${synonyms.join(`${EOL}-`)}` : `- ${value}`
-    ).join(EOL)}
+    )).join(EOL)}
 `;
   } else {
     return values.map(({ value, synonyms }: any) => (
-      `<!-- ${timestamp} | entity : ${name} | ${id} -->
-## synonym:${value.replace(/ |-/g, "_").toLowerCase()}
+      `## synonym:${value.replace(/ |-/g, "_").toLowerCase()}
 - ${synonyms.length ? synonyms.join(`${EOL}-`) : "<!-- need to generate value synonyms here -->"}`
     )).join(EOL);
   }

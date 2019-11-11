@@ -1,8 +1,8 @@
 import uuid from "uuid/v4";
 import * as flow from "@botmock-api/flow";
 import { wrapEntitiesWithChar } from "@botmock-api/text";
-import { writeFile, mkdirp, copyFileSync } from "fs-extra";
 import { stringify as toYAML } from "yaml";
+import { writeFile, mkdirp } from "fs-extra";
 // @ts-ignore
 import { default as snakeCase } from "to-snake-case";
 import { join } from "path";
@@ -221,7 +221,7 @@ export default class FileWriter extends flow.AbstractProject {
     return `${intents.map((intent: flow.Intent, i: number) => {
       // @ts-ignore
       const { id, name: intentName, utterances: examples, updated_at: { date: timestamp } } = intent;
-      return `${i !== 0 ? EOL : ""}<!-- ${timestamp} | ${id} -->
+      return `${i !== 0 ? EOL : ""}
 ## intent:${this.sanitizeIntentName(intentName)}
 ${examples.map((example: any) => nlu.generateExampleContent(example, entities)).join(EOL)}`;
     }).join(EOL)}
@@ -283,10 +283,10 @@ ${entities.map(entity => nlu.generateEntityContent(entity)).join(EOL)}`;
             return name;
           }),
         ];
+        const requirements = this.representRequirementsForIntents();
         const paths: string[] = lineage.map((intentName: string) => {
           const { id: idOfIntent } = this.projectData.intents.find(intent => intent.name === intentName) as flow.Intent;
-          // @ts-ignore
-          const [firstRequiredSlot] = this.representRequirementsForIntents().get(idOfIntent);
+          const [firstRequiredSlot] = requirements.get(idOfIntent) as any;
           let slot: string = "";
           if (firstRequiredSlot) {
             const variable = this.projectData.variables.find(variable => variable.id === firstRequiredSlot.variable_id);
@@ -299,7 +299,7 @@ ${entities.map(entity => nlu.generateEntityContent(entity)).join(EOL)}`;
         });
         const storyName = `## ${uuid()}`;
         return acc + EOL + storyName + EOL + paths.join(EOL) + EOL;
-      }, `<!-- generated ${new Date().toLocaleString()} -->`);
+      }, "");
     await writeFile(join(this.outputDir, "data", "stories.md"), data);
   }
   /**
@@ -315,14 +315,17 @@ ${entities.map(entity => nlu.generateEntityContent(entity)).join(EOL)}`;
   private async writeDomainFile(): Promise<void> {
     const outputFilePath = join(this.outputDir, "domain.yml");
     const firstLine = `# generated ${new Date().toLocaleString()}`;
-    const data = toYAML({
+    const data: any = {
       intents: this.projectData.intents.map(intent => this.sanitizeIntentName(intent.name)),
       entities: this.projectData.variables.map(variable => variable.name.replace(/\s/, "")),
       actions: this.getUniqueActionNames(),
       templates: this.createTemplates(),
-      slots: this.representRequiredSlots(),
-    });
-    return await writeFile(outputFilePath, `${firstLine}${EOL}${data}`);
+    };
+    const requiredSlots = this.representRequiredSlots();
+    if (Array.isArray(requiredSlots) && requiredSlots.length) {
+      data.slots = requiredSlots;
+    }
+    return await writeFile(outputFilePath, `${firstLine}${EOL}${toYAML(data)}`);
   }
   /**
    * Writes all files produced by script

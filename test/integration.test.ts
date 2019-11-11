@@ -1,9 +1,9 @@
 import "dotenv/config";
 // import { Simulator } from "@botmock-api/flow";
-import { remove, mkdirp, readFile, readdir } from "fs-extra";
-import { execSync } from "child_process";
+import { remove, readFile, readdir } from "fs-extra";
 import { EOL } from "os";
 import { join } from "path";
+import { execSync } from "child_process";
 import { projectData } from "./fixtures";
 import { default as FileWriter } from "../lib/file";
 
@@ -38,11 +38,11 @@ describe("files", () => {
     instance = FileWriter.getInstance({ projectData, outputDir });
     await instance.write();
   });
-  test("creates domain file of correct length", async () => {
+  test("domain file has correct length", async () => {
     const file = await readFile(join(outputDir, "domain.yml"), "utf8");
     expect(file.split(EOL)).toHaveLength(11);
   });
-  test("all fields are present in domain file", async () => {
+  test("domain file has correct fields", async () => {
     const file = await readFile(join(outputDir, "domain.yml"), "utf8");
     const lines = file.split(EOL).slice(1);
     const fieldNames = new Set(["intents", "entities", "actions", "templates", "slots"]);
