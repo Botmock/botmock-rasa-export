@@ -1,11 +1,17 @@
 import "dotenv/config";
-// import { FileWriter } from "@botmock-api/file";
 import { Batcher } from "@botmock-api/client";
 import { default as log } from "@botmock-api/log";
 import { writeJson, remove, mkdirp } from "fs-extra";
 import { EOL } from "os";
 import { join } from "path";
 import { default as FileWriter } from "./lib/file";
+
+/**
+ * Moves output data to rasa target
+ * @param target path to main rasa project directory
+ * @todo
+ */
+// async function mv(target: string): Promise<void> {}
 
 /**
  * Calls all fetch methods and calls all write methods

@@ -191,7 +191,7 @@ export default class FileWriter extends flow.AbstractProject {
   /**
    * Represent all required slots as an array of objects able to be consumed as yml
    */
-  private representRequiredSlots(): {}[] {
+  private representRequiredSlots(): any[] {
     const uniqueNamesOfRequiredSlots = Array.from(this.representRequirementsForIntents())
       .reduce((acc, pair: [string, any]) => {
         const [, requiredSlots] = pair;
@@ -311,6 +311,25 @@ ${entities.map(entity => nlu.generateEntityContent(entity)).join(EOL)}`;
     return snakeCase(text.replace(/\s/g, ""));
   }
   /**
+   * Creates a string representing the required slot structure
+   * @remarks this is appending to the serialized string because
+   * rasa does not treat the slots as a standard "yamlized" object
+   * @param slots the slots from which to create the string
+   * slots:
+      thing:
+        type: text
+        initial_value: thing
+   */
+  private formatSlotSpecificYaml(slots: any[]): string {
+    const requiredSlots =  slots.reduce((acc, slot) => {
+      return acc + Object.keys(slot).reduce((accu, slotName) => {
+        const data = slot[slotName];
+        return `${accu}${EOL}\t${slotName}:${EOL}\t\ttype: ${data.type}${EOL}\t\tinitial_value: ${data.initial_value}${EOL}`;
+      }, "");
+    }, "");
+    return `slots:${requiredSlots}`;
+  }
+  /**
    * Writes yml domain file
    */
   private async writeDomainFile(): Promise<void> {
@@ -322,11 +341,12 @@ ${entities.map(entity => nlu.generateEntityContent(entity)).join(EOL)}`;
       actions: this.getUniqueActionNames(),
       templates: this.createTemplates(),
     };
+    let serialData: string = toYAML(data);
     const requiredSlots = this.representRequiredSlots();
     if (Array.isArray(requiredSlots) && requiredSlots.length) {
-      data.slots = requiredSlots;
+      serialData += this.formatSlotSpecificYaml(requiredSlots);
     }
-    return await writeFile(outputFilePath, `${firstLine}${EOL}${toYAML(data)}`);
+    return await writeFile(outputFilePath, `${firstLine}${EOL}${serialData}`);
   }
   /**
    * Writes all files produced by script
