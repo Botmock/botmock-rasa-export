@@ -138,16 +138,22 @@ export default class FileWriter extends flow.AbstractProject {
                 // @ts-ignore
                 payload = `waiting for ${message.payload?.show_for} ms`;
                 break;
-              case "api":
-                break;
               case "jump":
-                const { label, jumpType } = JSON.parse(message.payload?.selectedResult)
+                let label;
+                let jumpType;
+                try {
+                  const json = JSON.parse(message.payload?.selectedResult);
+                  label = json.label;
+                  jumpType = json.jumpType;
+                } catch (_) {
+                  break;
+                }
                 switch (jumpType) {
                   case Botmock.JumpTypes.node:
-                    payload = `jumped to block ${label}`;
+                    payload = { text: `jumped to block ${label}` };
                     break;
                   case Botmock.JumpTypes.project:
-                    payload = `jumped to project ${label}`;
+                    payload = { text: `jumped to project ${label}` };
                     break;
                 }
                 break;
@@ -155,12 +161,13 @@ export default class FileWriter extends flow.AbstractProject {
               case "image":
                 const imageKeyName = message.message_type === "webview"
                   ? "image"
-                  : "iamge_url";
-                payload = {
-                  text: message.payload?.text,
-                  // @ts-ignore
-                  image: message.payload[imageKeyName],
-                };
+                  : "image_url";
+                // @ts-ignore
+                const data: any = { image: message.payload[imageKeyName] };
+                if (message.payload?.text) {
+                  data.text = message.payload?.text;
+                }
+                payload = data;
                 break;
               case "button":
               case "quick_replies":
@@ -170,15 +177,12 @@ export default class FileWriter extends flow.AbstractProject {
                 // @ts-ignore
                 payload = message.payload[key].map(({ title, payload }: any) => ({ buttons: { title, payload } }));
                 break;
-              case "text":
-                payload = {
-                  text: wrapEntitiesWithChar(message.payload?.text as string, "{"),
-                };
-                break;
               default:
-                // @ts-ignore
-                const payloadValue = message.payload[message.message_type];
-                payload = typeof payloadValue !== "string" ? JSON.stringify(payloadValue) : payloadValue;
+                const text = typeof message.payload?.text !== "undefined"
+                  ? wrapEntitiesWithChar(message.payload?.text as string, "{")
+                  : JSON.stringify(message.payload);
+                payload = { text };
+                break;
             }
             return [
               ...accu,
