@@ -78,8 +78,8 @@ export default class FileWriter extends flow.AbstractProject {
    */
   private createStoriesFromIntentStructure(): { [intentName: string]: string[] } {
     const { intents } = this.projectData;
-    return Array.from(this.boardStructureByMessages).reduce(
-      (acc, [idOfMessageConnectedByIntent, idsOfConnectedIntents]: [string, string[]]) => ({
+    return Array.from(this.boardStructureByMessages)
+      .reduce((acc, [idOfMessageConnectedByIntent, idsOfConnectedIntents]: [string, string[]]) => ({
         ...acc,
         ...idsOfConnectedIntents.reduce((accu, id: string) => {
           const message: any = this.getMessage(idOfMessageConnectedByIntent);
@@ -87,16 +87,16 @@ export default class FileWriter extends flow.AbstractProject {
           if (typeof intent !== "undefined") {
             return {
               ...accu,
-              [intent.name]: [message, ...this.gatherMessagesUpToNextIntent(message)]
-                .map(message => message.message_id)
+              [intent.name]: [
+                message,
+                ...this.gatherMessagesUpToNextIntent(message)
+              ].map(message => message.message_id)
             };
           } else {
             return accu;
           }
         }, {})
-      }),
-      {}
-    );
+      }), {});
   }
   /**
    * Creates object describing templates for the project
