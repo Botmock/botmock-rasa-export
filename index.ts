@@ -1,9 +1,10 @@
 import "dotenv/config";
 import { Batcher } from "@botmock-api/client";
 import { default as log } from "@botmock-api/log";
-import { writeJson, remove, mkdirp, move } from "fs-extra";
+import { writeJson, remove, mkdirp, readdir, stat } from "fs-extra";
 import { EOL } from "os";
-import { join } from "path";
+import { sep, join, resolve } from "path";
+import { execSync } from "child_process";
 import { default as FileWriter } from "./lib/file";
 
 const outputBasename = "output";
@@ -11,12 +12,39 @@ const outputBasename = "output";
 /**
  * Moves output data to an existing rasa project
  * @remarks replaces existing files in rasa project
- * @param pathToRasaProject relative path to rasa project directory
+ * @param relativePathToRasaProject relative path to rasa project directory
  * @todo
  */
-// async function mvOutput(pathToRasaProject: string): Promise<void> {
-//   await move(join(__dirname, outputBasename), pathToRasaProject);
-// }
+async function mvOutput(relativePathToRasaProject: string): Promise<void> {
+  const outputPath = join(__dirname, outputBasename);
+  const filepaths: string[] = await (await readdir(outputPath))
+    // @ts-ignore
+    .reduce(async (acc, content) => {
+      const filepath: string = join(outputPath, content);
+      if ((await stat(filepath)).isDirectory()) {
+        return [
+          ...acc,
+          ...(await readdir(filepath))
+            // @ts-ignore
+            .reduce((accu, deepContent) => {
+              const deepFilepath = join(filepath, deepContent);
+              return [...accu, deepFilepath];
+            }, [])
+        ]
+      }
+      const data = acc instanceof Promise ? await acc : acc;
+      return [
+        ...data,
+        filepath,
+      ];
+    }, []);
+  const absolutePathToRasaProject = resolve(relativePathToRasaProject)
+  for (const src of filepaths) {
+    const splitPath = src.split(sep);
+    const dest = join(absolutePathToRasaProject, splitPath.slice(splitPath.indexOf(outputBasename + 1)).join(sep));
+    execSync(`mv ${src} ${dest}`);
+  }
+}
 
 /**
  * Calls all fetch methods and calls all write methods
@@ -46,10 +74,10 @@ async function main(args: string[]): Promise<void> {
   log("writing files");
   const writer = FileWriter.getInstance({ outputDir, projectData });
   await writer.write();
-  // const [, , pathToRasaProject] = args;
-  // if (pathToRasaProject) {
-  //   await mvOutput(pathToRasaProject);
-  // }
+  const [, , relativePathToRasaProject] = args;
+  if (process.platform === "darwin" && relativePathToRasaProject) {
+    await mvOutput(relativePathToRasaProject);
+  }
   log("done");
 }
 
