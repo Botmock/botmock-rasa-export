@@ -42,7 +42,7 @@ export default class FileWriter extends flow.AbstractProject {
     super({ projectData: config.projectData as ProjectData<typeof config.projectData> });
     this.outputDir = config.outputDir;
     this.boardStructureByMessages = this.segmentizeBoardFromMessages();
-    this.stories = this.createStoriesFromIntentStructure();
+    this.stories = this.createStoriesFromIntentStructure(this.boardStructureByMessages);
   }
   /**
    * Get singleton class
@@ -76,9 +76,9 @@ export default class FileWriter extends flow.AbstractProject {
    * Creates object associating intent names with the ids of blocks that flow from them
    * @returns stories as an object
    */
-  private createStoriesFromIntentStructure(): { [intentName: string]: string[] } {
+  private createStoriesFromIntentStructure(boardStructure: Map<string, string[]>): { [intentName: string]: string[] } {
     const { intents } = this.projectData;
-    return Array.from(this.boardStructureByMessages)
+    return Array.from(boardStructure)
       .reduce((acc, [idOfMessageConnectedByIntent, idsOfConnectedIntents]: [string, string[]]) => ({
         ...acc,
         ...idsOfConnectedIntents.reduce((accu, id: string) => {
@@ -109,15 +109,13 @@ export default class FileWriter extends flow.AbstractProject {
         const message = this.getMessage(actionName.slice(ACTION_PREFIX_LENGTH)) as flow.Message;
         return {
           ...acc,
-          // @ts-ignore
-          [actionName]: [message, ...this.gatherMessagesUpToNextIntent(message)].reduce((accu, message: flow.Message) => {
+          [actionName]: [message, ...this.gatherMessagesUpToNextIntent(message)].reduce((accu: any, message: flow.Message) => {
             let payload: string | {} | void = {};
             switch (message.message_type) {
               case "generic":
                 payload = {
                   text: message.payload?.text,
-                  // @ts-ignore
-                  buttons: message.payload?.elements?.reduce((acc, element: any) => {
+                  buttons: message.payload?.elements?.reduce((acc: any, element: any) => {
                     const buttons: any[] = Array.isArray(element.buttons) ? element.buttons : Array.of(element.buttons);
                     return [
                       ...acc,
@@ -319,16 +317,12 @@ ${entities.map(entity => nlu.generateEntityContent(entity)).join(EOL)}`;
    * @remarks this is appending to the serialized string because
    * rasa does not treat the slots as a standard "yamlized" object
    * @param slots the slots from which to create the string
-   * slots:
-      thing:
-        type: text
-        initial_value: thing
    */
   private formatSlotSpecificYaml(slots: any[]): string {
     const requiredSlots =  slots.reduce((acc, slot) => {
       return acc + Object.keys(slot).reduce((accu, slotName) => {
         const data = slot[slotName];
-        return `${accu}${EOL}\t${slotName}:${EOL}\t\ttype: ${data.type}${EOL}\t\tinitial_value: ${data.initial_value}${EOL}`;
+        return `${accu}${EOL}\t${slotName}:${EOL}\t\ttype: ${data.type}${EOL}\t\tauto_fill: False${EOL}`;
       }, "");
     }, "");
     return `slots:${requiredSlots}`;

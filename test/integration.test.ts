@@ -1,5 +1,4 @@
 import "dotenv/config";
-// import { Simulator } from "@botmock-api/flow";
 import { remove, readFile, readdir } from "fs-extra";
 import { EOL } from "os";
 import { join } from "path";
