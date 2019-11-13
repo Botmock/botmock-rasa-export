@@ -134,7 +134,7 @@ export default class FileWriter extends flow.AbstractProject {
                 break;
               case "delay":
                 // @ts-ignore
-                payload = `waiting for ${message.payload?.show_for} ms`;
+                payload = { text: `waiting for ${message.payload?.show_for} ms` };
                 break;
               case "jump":
                 let label;
