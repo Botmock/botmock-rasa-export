@@ -121,18 +121,18 @@ export default class FileWriter extends flow.AbstractProject {
                     const buttons: any[] = Array.isArray(element.buttons) ? element.buttons : Array.of(element.buttons);
                     return [
                       ...acc,
-                      buttons.reduce((accu, button) => {
-                        return {
-                          title: button.title,
-                          payload: button.payload,
-                        }
-                      }, {}),
+                      ...buttons.reduce((accu, button) => {
+                        return [
+                          ...accu,
+                          {
+                            title: button.title,
+                            payload: button.payload,
+                          },
+                        ]
+                      }, []),
                     ]
                   }, []),
                 };
-                break;
-              case "location":
-                payload = JSON.stringify(message.payload);
                 break;
               case "delay":
                 // @ts-ignore

@@ -1,50 +1,13 @@
 import "dotenv/config";
+import * as fs from "fs-extra";
 import { Batcher } from "@botmock-api/client";
 import { default as log } from "@botmock-api/log";
-import { writeJson, remove, mkdirp, readdir, stat } from "fs-extra";
+// import { execSync } from "child_process";
 import { EOL } from "os";
 import { sep, join, resolve } from "path";
-import { execSync } from "child_process";
 import { default as FileWriter } from "./lib/file";
 
 const outputBasename = "output";
-
-/**
- * Moves output data to an existing rasa project
- * @remarks replaces existing files in rasa project
- * @param relativePathToRasaProject relative path to rasa project directory
- * @todo
- */
-async function mvOutput(relativePathToRasaProject: string): Promise<void> {
-  const outputPath = join(__dirname, outputBasename);
-  const filepaths: string[] = await (await readdir(outputPath))
-    // @ts-ignore
-    .reduce(async (acc, content) => {
-      const filepath: string = join(outputPath, content);
-      if ((await stat(filepath)).isDirectory()) {
-        return [
-          ...acc,
-          ...(await readdir(filepath))
-            // @ts-ignore
-            .reduce((accu, deepContent) => {
-              const deepFilepath = join(filepath, deepContent);
-              return [...accu, deepFilepath];
-            }, [])
-        ]
-      }
-      const data = acc instanceof Promise ? await acc : acc;
-      return [
-        ...data,
-        filepath,
-      ];
-    }, []);
-  const absolutePathToRasaProject = resolve(relativePathToRasaProject)
-  for (const src of filepaths) {
-    const splitPath = src.split(sep);
-    const dest = join(absolutePathToRasaProject, splitPath.slice(splitPath.indexOf(outputBasename + 1)).join(sep));
-    execSync(`mv ${src} ${dest}`);
-  }
-}
 
 /**
  * Calls all fetch methods and calls all write methods
@@ -56,8 +19,8 @@ async function mvOutput(relativePathToRasaProject: string): Promise<void> {
 async function main(args: string[]): Promise<void> {
   const outputDir = join(__dirname, outputBasename);
   log("recreating output directory");
-  await remove(outputDir);
-  await mkdirp(outputDir);
+  await fs.remove(outputDir);
+  await fs.mkdirp(outputDir);
   log("fetching project data");
   const { data: projectData }: any = await new Batcher({
     token: process.env.BOTMOCK_TOKEN as string,
@@ -76,7 +39,8 @@ async function main(args: string[]): Promise<void> {
   await writer.write();
   const [, , relativePathToRasaProject] = args;
   if (process.platform === "darwin" && relativePathToRasaProject) {
-    await mvOutput(relativePathToRasaProject);
+    // await mvOutput(relativePathToRasaProject);
+    // await fs.remove(outputDir);
   }
   log("done");
 }
@@ -87,5 +51,42 @@ process.on("uncaughtException", () => {});
 main(process.argv).catch(async (err: Error) => {
   log(err.stack as string, { isError: true });
   const { message, stack } = err;
-  await writeJson(join(__dirname, "err.json"), { message, stack }, { EOL, spaces: 2 });
+  await fs.writeJson(join(__dirname, "err.json"), { message, stack }, { EOL, spaces: 2 });
 });
+
+/**
+ * Moves output data to an existing rasa project
+ * @remarks replaces existing files in rasa project
+ * @param relativePathToRasaProject relative path to rasa project directory
+ * @todo
+ */
+// async function mvOutput(relativePathToRasaProject: string): Promise<void> {
+//   const outputPath = join(__dirname, outputBasename);
+//   const filepaths: string[] = await (await fs.readdir(outputPath))
+//     // @ts-ignore
+//     .reduce(async (acc, content) => {
+//       const filepath: string = join(outputPath, content);
+//       if ((await fs.stat(filepath)).isDirectory()) {
+//         return [
+//           ...acc,
+//           ...(await fs.readdir(filepath))
+//             // @ts-ignore
+//             .reduce((accu, deepContent) => {
+//               const deepFilepath = join(filepath, deepContent);
+//               return [...accu, deepFilepath];
+//             }, [])
+//         ]
+//       }
+//       const data = acc instanceof Promise ? await acc : acc;
+//       return [
+//         ...data,
+//         filepath,
+//       ];
+//     }, []);
+//   const absolutePathToRasaProject = resolve(relativePathToRasaProject)
+//   for (const src of filepaths) {
+//     const splitPath = src.split(sep);
+//     const dest = join(absolutePathToRasaProject, splitPath.slice(splitPath.indexOf(outputBasename + 1)).join(sep));
+//     execSync(`mv ${src} ${dest}`);
+//   }
+// }
