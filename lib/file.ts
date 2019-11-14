@@ -322,7 +322,9 @@ ${entities.map(entity => nlu.generateEntityContent(entity)).join(EOL)}`;
     const requiredSlots =  slots.reduce((acc, slot) => {
       return acc + Object.keys(slot).reduce((accu, slotName) => {
         const data = slot[slotName];
-        return `${accu}${EOL}\t${slotName}:${EOL}\t\ttype: ${data.type}${EOL}\t\tauto_fill: False${EOL}`;
+        const twoSpaces = " ".repeat(2);
+        const fourSpaces = " ".repeat(4);
+        return `${accu}${EOL}${twoSpaces}${slotName}:${EOL}${fourSpaces}type: ${data.type}${EOL}${fourSpaces}auto_fill: False${EOL}`;
       }, "");
     }, "");
     return `slots:${requiredSlots}`;
