@@ -1,57 +1,64 @@
-import { wrapEntitiesWithChar } from "@botmock-api/text";
-import * as utils from "@botmock-api/utils";
 import uuid from "uuid/v4";
-import { writeFile, mkdirp } from "fs-extra";
+import * as flow from "@botmock-api/flow";
+import { wrapEntitiesWithChar } from "@botmock-api/text";
 import { stringify as toYAML } from "yaml";
-import { EventEmitter } from "events";
+import { writeFile, mkdirp } from "fs-extra";
+// @ts-ignore
+import { default as snakeCase } from "to-snake-case";
 import { join } from "path";
 import { EOL } from "os";
-import * as Assets from "./types";
-import { genIntents } from "./nlu";
-import { convertIntentStructureToStories } from "./intent";
+import * as nlu from "./nlu";
 
-export type IntentMap = Map<string, string[]>;
-
-type Templates = { [actionName: string]: { [type: string]: any } };
-
-interface Config {
-  readonly outputDir: string;
-  readonly projectData: Assets.CollectedResponses
+namespace Rasa {
+  export enum SlotTypes {
+    text = "text",
+  }
 }
 
-export default class FileWriter extends EventEmitter {
+namespace Botmock {
+  export enum JumpTypes {
+    node = "node",
+    project = "project",
+  }
+}
+
+export type ProjectData<T> = T extends Promise<infer K> ? K : any;
+
+interface IConfig {
+  readonly outputDir: string;
+  readonly projectData: unknown;
+}
+
+export default class FileWriter extends flow.AbstractProject {
   private outputDir: string;
-  private projectData: Assets.CollectedResponses;
-  private intentMap: IntentMap;
-  private messageCollector: Function;
-  private getMessage: Function;
+  private boardStructureByMessages: flow.SegmentizedStructure;
   private stories: { [intentName: string]: string[] };
+  private static instance: FileWriter;
   /**
    * Creates instance of FileWriter
-   * @param config configuration object containing an outputDir to hold generated
-   * files, and projectData for the original botmock flow project
+   * @param config configuration object
    */
-  constructor(config: Config) {
-    super();
+  private constructor(config: IConfig) {
+    super({ projectData: config.projectData as ProjectData<typeof config.projectData> });
     this.outputDir = config.outputDir;
-    this.projectData = config.projectData;
-    this.getMessage = (id: string): Assets.Message => (
-      this.projectData.board.board.messages.find((message: Assets.Message) => message.message_id === id)
-    );
-    this.intentMap = utils.createIntentMap(this.projectData.board.board.messages, this.projectData.intents);
-    this.messageCollector = utils.createMessageCollector(this.intentMap, this.getMessage);
-    this.stories = convertIntentStructureToStories({
-      intents: this.projectData.intents,
-      intentMap: this.intentMap,
-      messageCollector: this.messageCollector,
-      messages: this.projectData.board.board.messages
-    });
+    this.boardStructureByMessages = this.segmentizeBoardFromMessages();
+    this.stories = this.createStoriesFromIntentStructure(this.boardStructureByMessages);
+  }
+  /**
+   * Get singleton class
+   * @returns only existing instance of the class
+   */
+  public static getInstance(config: IConfig): FileWriter {
+    if (!FileWriter.instance) {
+      FileWriter.instance = new FileWriter(config);
+    }
+    return FileWriter.instance;
   }
   /**
    * Gets array containing the unique action names in the project
-   * @returns string[]
+   * @returns unique action names
    */
-  private getUniqueActionNames(): string[] {
+  private getUniqueActionNames(): ReadonlyArray<string> {
     return Object.keys(
       Object.values(this.stories)
         .reduce((acc, values: string[]) => {
@@ -59,116 +66,201 @@ export default class FileWriter extends EventEmitter {
             ...acc,
             ...values.reduce((accu, value) => ({
               ...accu,
-              [value]: {}
+              [value]: void 0
             }), {})
           }
         }, {}))
       .map(action => `utter_${action}`);
   }
   /**
-   * Creates object describing templates for the project
-   * @returns Templates
+   * Creates object associating intent names with the ids of blocks that flow from them
+   * @returns stories as an object
    */
-  private createTemplates(): Templates {
-    const actionNameContent = this.getUniqueActionNames()
+  private createStoriesFromIntentStructure(boardStructure: Map<string, string[]>): { [intentName: string]: string[] } {
+    const { intents } = this.projectData;
+    return Array.from(boardStructure)
+      .reduce((acc, [idOfMessageConnectedByIntent, idsOfConnectedIntents]: [string, string[]]) => ({
+        ...acc,
+        ...idsOfConnectedIntents.reduce((accu, id: string) => {
+          const message: any = this.getMessage(idOfMessageConnectedByIntent);
+          const intent = intents.find(intent => intent.id === id) as flow.Intent;
+          if (typeof intent !== "undefined") {
+            return {
+              ...accu,
+              [intent.name]: [
+                message,
+                ...this.gatherMessagesUpToNextIntent(message)
+              ].map(message => message.message_id)
+            };
+          } else {
+            return accu;
+          }
+        }, {})
+      }), {});
+  }
+  /**
+   * Creates object describing templates for the project
+   * @returns nested object containing content block data
+   */
+  private createTemplates(): { [actionName: string]: { [type: string]: any } } {
+    return this.getUniqueActionNames()
       .reduce((acc, actionName: string) => {
-        const PREFIX_LENGTH = 6;
-        const message = this.getMessage(actionName.slice(PREFIX_LENGTH));
-        const collectedMessages = this.messageCollector(message.next_message_ids).map(this.getMessage);
+        const ACTION_PREFIX_LENGTH = 6;
+        const message = this.getMessage(actionName.slice(ACTION_PREFIX_LENGTH)) as flow.Message;
         return {
           ...acc,
-          [actionName]: [message, ...collectedMessages].reduce((accu, message: Assets.Message) => {
-            let payload: string | {};
+          [actionName]: [message, ...this.gatherMessagesUpToNextIntent(message)].reduce((accu: any, message: flow.Message) => {
+            let payload: string | {} | void = {};
             switch (message.message_type) {
-              // case "api":
+              case "generic":
+                payload = {
+                  text: message.payload?.text,
+                  buttons: message.payload?.elements?.reduce((acc: any, element: any) => {
+                    const buttons: any[] = Array.isArray(element.buttons) ? element.buttons : Array.of(element.buttons);
+                    return [
+                      ...acc,
+                      ...buttons.reduce((accu, button) => {
+                        return [
+                          ...accu,
+                          {
+                            title: button.title,
+                            payload: button.payload,
+                          },
+                        ]
+                      }, []),
+                    ]
+                  }, []),
+                };
+                break;
+              case "delay":
+                // @ts-ignore
+                payload = { text: `waiting for ${message.payload?.show_for} ms` };
+                break;
               case "jump":
-                const { value, label, jumpType } = JSON.parse(message.payload.selectedResult)
-                if (jumpType === "node") {
-                  payload = `jumped to block ${label}`;
-                } else {
-                  payload = `jumped to project ${label}`;
+                let label;
+                let jumpType;
+                try {
+                  const json = JSON.parse(message.payload?.selectedResult);
+                  label = json.label;
+                  jumpType = json.jumpType;
+                } catch (_) {
+                  break;
+                }
+                switch (jumpType) {
+                  case Botmock.JumpTypes.node:
+                    payload = { text: `jumped to block ${label}` };
+                    break;
+                  case Botmock.JumpTypes.project:
+                    payload = { text: `jumped to project ${label}` };
+                    break;
                 }
                 break;
+              case "webview":
               case "image":
-                payload = message.payload.image_url;
+                const imageKeyName = message.message_type === "webview"
+                  ? "image"
+                  : "image_url";
+                // @ts-ignore
+                const data: any = { image: message.payload[imageKeyName] };
+                if (message.payload?.text) {
+                  data.text = message.payload?.text;
+                }
+                payload = data;
                 break;
               case "button":
               case "quick_replies":
-                payload = (message.payload.quick_replies || message.payload.buttons)
-                  .map(({ title, payload }) => ({ buttons: { title, payload } }));
+                const key = message.payload?.hasOwnProperty("buttons")
+                  ? "buttons"
+                  : "quick_replies";
+                // @ts-ignore
+                payload = message.payload[key].map(({ title, payload }: any) => ({ buttons: { title, payload } }));
                 break;
               default:
-                const payloadValue = message.payload[message.message_type];
-                payload = typeof payloadValue !== "string" ? JSON.stringify(payloadValue) : payloadValue;
+                const text = typeof message.payload?.text !== "undefined"
+                  ? wrapEntitiesWithChar(message.payload?.text as string, "{")
+                  : JSON.stringify(message.payload);
+                payload = { text };
+                break;
             }
             return [
               ...accu,
-              (typeof payload === "string"
-                ? wrapEntitiesWithChar(payload, "{")
-                : JSON.stringify(payload, null, 2)
-              )
+              ...Array.isArray(payload) ? payload : Array.of(payload)
             ];
           }, [])
         }
       }, {});
-    // console.log(actionNameContent);
-    return actionNameContent;
   }
   /**
-   * Writes yml domain file
-   * @returns Promise<void>
+   * Represent all required slots as an array of objects able to be consumed as yml
    */
-  public async createYml(): Promise<void> {
-    const outputFilePath = join(this.outputDir, "domain.yml");
-    const firstLine = `# generated ${new Date().toLocaleString()}`;
-    const data = toYAML({
-      intents: this.projectData.intents.map((intent: Assets.Intent) => intent.name),
-      entities: this.projectData.variables.map((entity: Assets.Variable) => entity.name.replace(/\s/, "")),
-      actions: this.getUniqueActionNames(),
-      templates: this.createTemplates()
-    });
-    return await writeFile(
-      outputFilePath,
-      `${firstLine}${EOL}${data}`
-    );
+  private representRequiredSlots(): any[] {
+    const uniqueNamesOfRequiredSlots = Array.from(this.representRequirementsForIntents())
+      .reduce((acc, pair: [string, any]) => {
+        const [, requiredSlots] = pair;
+        return {
+          ...acc,
+          ...requiredSlots.reduce((accu: any, slot: flow.Slot) => {
+            const variable = this.projectData.variables.find(variable => variable.id === slot.variable_id);
+            if (!variable) {
+              return accu;
+            }
+            return {
+              ...accu,
+              [variable.name]: variable.default_value || void 0,
+            }
+          }, {})
+        };
+      }, {});
+    return Object.entries(uniqueNamesOfRequiredSlots)
+      .map(([slotName, defaultValue]) => ({ [slotName]: { type: Rasa.SlotTypes.text, initial_value: defaultValue } }));
   }
-/**
- * Writes intent markdown file
- * @returns Promise<void>
- */
-  private async writeIntentFile(): Promise<void> {
+  /**
+   * Creates markdown content for intents
+   * @returns file contents as a string
+   */
+  private generateNLUFileContent(): string {
     const { intents, entities } = this.projectData;
+    return `${intents.map((intent: flow.Intent, i: number) => {
+      // @ts-ignore
+      const { id, name: intentName, utterances: examples, updated_at: { date: timestamp } } = intent;
+      return `${i !== 0 ? EOL : ""}<!-- ${new Date().toISOString()} -->
+## intent:${this.sanitizeIntentName(intentName)}
+${examples.map((example: any) => nlu.generateExampleContent(example, entities)).join(EOL)}`;
+    }).join(EOL)}
+${entities.map(entity => nlu.generateEntityContent(entity)).join(EOL)}`;
+  }
+  /**
+   * Writes intent markdown file
+   */
+  private async writeIntentFile(): Promise<void> {
     const outputFilePath = join(this.outputDir, "data", "nlu.md");
     await mkdirp(join(this.outputDir, "data"));
-    await writeFile(
-      outputFilePath,
-      genIntents({ intents, entities })
-    );
+    await writeFile(outputFilePath, this.generateNLUFileContent());
   }
   /**
    * Gets the lineage of intents implied by a given message id
    * @param messageId message id of a message connected by an intent
-   * @returns string[]
    */
   private getIntentLineageForMessage(messageId: string): string[] {
-    const { getMessage, intentMap, projectData } = this;
+    const self = this;
     const context: string[] = [];
     const seenIds: string[] = [];
     (function unwindFromMessageId(messageId: string) {
-      const { previous_message_ids: prevIds } = getMessage(messageId);
-      let messageFollowingIntent: any;
-      if ((messageFollowingIntent = prevIds.find(prev => intentMap.get(prev.message_id)))) {
-        const { name: nameOfIntent } = projectData.intents.find((intent: Assets.Intent) => (
-          intent.id === intentMap.get(messageFollowingIntent.message_id)[0]
-        ));
-        if (typeof nameOfIntent !== "undefined") {
-          context.push(nameOfIntent);
-        }
-      } else {
-        for (const { message_id: prevMessageId } of prevIds) {
-          if (!seenIds.includes(prevMessageId)) {
-            seenIds.push(prevMessageId);
-            unwindFromMessageId(prevMessageId);
+      const { previous_message_ids: previousMessageIds } = self.getMessage(messageId) as flow.Message;
+      if (typeof previousMessageIds !== "undefined") {
+        let messageFollowingIntent: any;
+        if ((messageFollowingIntent = previousMessageIds.find(m => self.boardStructureByMessages.get(m.message_id)))) {
+          const [idOfConnectedItent] = self.boardStructureByMessages.get(messageFollowingIntent.message_id) as [string];
+          const { name: nameOfIntent } = self.getIntent(idOfConnectedItent) as flow.Intent;
+          if (typeof nameOfIntent !== "undefined") {
+            context.push(nameOfIntent);
+          }
+        } else {
+          for (const { message_id: prevMessageId } of previousMessageIds) {
+            if (!seenIds.includes(prevMessageId)) {
+              seenIds.push(prevMessageId);
+              unwindFromMessageId(prevMessageId);
+            }
           }
         }
       }
@@ -181,36 +273,87 @@ export default class FileWriter extends EventEmitter {
    * these are "paths"; each intent in a path is part of the lineage of intents
    * leading to the particular message that follows from an intent; each action
    * is a content block in the relevant group between the intents.
-   * @returns Promise<void>
    */
   private async writeStoriesFile(): Promise<void> {
-    const outputFilePath = join(this.outputDir, "data", "stories.md");
-    const OPENING_LINE = `<!-- generated ${new Date().toLocaleString()} -->`;
-    const data = Array.from(this.intentMap.keys())
+    const data = Array.from(this.boardStructureByMessages.keys())
       .reduce((acc, idOfMessageConnectedByIntent: string) => {
-        const lineage: string[] = [
+        const idsOfConnectedIntents = this.boardStructureByMessages.get(idOfMessageConnectedByIntent) as any[];
+        const lineage = [
           ...this.getIntentLineageForMessage(idOfMessageConnectedByIntent),
-          ...this.intentMap.get(idOfMessageConnectedByIntent).map((intentId: string) => (
-            this.projectData.intents.find((intent: Assets.Intent) => intent.id === intentId).name
-          ))
+          ...idsOfConnectedIntents.map((intentId: string) => {
+            const { name } = this.getIntent(intentId) as flow.Intent;
+            return name;
+          }),
         ];
-        const path: string[] = lineage.map((intentName: string) => {
+        const requirements = this.representRequirementsForIntents();
+        const paths: string[] = lineage.map((intentName: string) => {
+          const { id: idOfIntent } = this.projectData.intents.find(intent => intent.name === intentName) as flow.Intent;
+          const [firstRequiredSlot] = requirements.get(idOfIntent) as any;
+          let slot: string = "";
+          if (firstRequiredSlot) {
+            const variable = this.projectData.variables.find(variable => variable.id === firstRequiredSlot.variable_id);
+            slot = `{"${variable?.name}": "${variable?.default_value}"}`;
+          }
           const actionsUnderIntent = this.stories[intentName].map((actionName: string) => (
             `  - utter_${actionName}`
-          )).join(EOL);
-          return `* ${intentName.replace(/\s/g, "").toLowerCase()}${EOL}${actionsUnderIntent}`;
+          )).concat(slot ? `  - slot${slot}`: []).join(EOL);
+          return `* ${this.sanitizeIntentName(intentName)}${slot}${EOL}${actionsUnderIntent}`;
         });
-        const storyName = `## ${uuid()}`;
-        return acc + EOL + storyName + EOL + path.join(EOL) + EOL;
-      }, OPENING_LINE);
-    await writeFile(outputFilePath, data);
+        const story = uuid();
+        const storyName = `## ${story}`;
+        return acc + EOL + storyName + EOL + paths.join(EOL) + EOL;
+      }, `<!-- ${new Date().toISOString()} -->`);
+    await writeFile(join(this.outputDir, "data", "stories.md"), data);
   }
   /**
-   * Writes markdown files within outputDir
-   * @returns Promise<void>
+   * Formats given text
+   * @param text text to sanitize
    */
-  public async createMd(): Promise<void> {
+  private sanitizeIntentName(text: string): string {
+    return snakeCase(text.replace(/\s/g, ""));
+  }
+  /**
+   * Creates a string representing the required slot structure
+   * @remarks this is appending to the serialized string because
+   * rasa does not treat the slots as a standard "yamlized" object
+   * @param slots the slots from which to create the string
+   */
+  private formatSlotSpecificYaml(slots: any[]): string {
+    const requiredSlots =  slots.reduce((acc, slot) => {
+      return acc + Object.keys(slot).reduce((accu, slotName) => {
+        const data = slot[slotName];
+        const twoSpaces = " ".repeat(2);
+        const fourSpaces = " ".repeat(4);
+        return `${accu}${EOL}${twoSpaces}${slotName}:${EOL}${fourSpaces}type: ${data.type}${EOL}${fourSpaces}auto_fill: False${EOL}`;
+      }, "");
+    }, "");
+    return `slots:${requiredSlots}`;
+  }
+  /**
+   * Writes yml domain file
+   */
+  private async writeDomainFile(): Promise<void> {
+    const outputFilePath = join(this.outputDir, "domain.yml");
+    const firstLine = `# ${new Date().toISOString()}`;
+    const data: any = {
+      intents: this.projectData.intents.map(intent => this.sanitizeIntentName(intent.name)),
+      entities: this.projectData.variables.map(variable => variable.name.replace(/\s/, "")),
+      actions: this.getUniqueActionNames(),
+      templates: this.createTemplates(),
+    };
+    let serialData: string = toYAML(data);
+    const requiredSlots = this.representRequiredSlots();
+    if (Array.isArray(requiredSlots) && requiredSlots.length) {
+      serialData += this.formatSlotSpecificYaml(requiredSlots);
+    }
+    return await writeFile(outputFilePath, `${firstLine}${EOL}${serialData}`);
+  }
+  /**
+   * Writes all files produced by script
+   */
+  public async write(): Promise<void> {
     await this.writeIntentFile();
     await this.writeStoriesFile();
+    await this.writeDomainFile();
   }
 }

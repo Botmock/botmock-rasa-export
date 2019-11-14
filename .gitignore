@@ -1,4 +1,6 @@
 node_modules
 coverage
 output
-.env
+err.json
+.vscode
+*.env

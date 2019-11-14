@@ -1,72 +1,43 @@
 import "dotenv/config";
-import * as Sentry from "@sentry/node";
-import { RewriteFrames } from "@sentry/integrations";
-// import * as Botmock from "@botmock-api/integrations";
-import { remove, mkdirp } from "fs-extra";
+import * as fs from "fs-extra";
+import { Batcher } from "@botmock-api/client";
+import { default as log } from "@botmock-api/log";
+import { EOL } from "os";
 import { join } from "path";
-// @ts-ignore
-import pkg from "./package.json";
-import { default as APIWrapper } from "./lib/project";
 import { default as FileWriter } from "./lib/file";
-import { SENTRY_DSN } from "./lib/constants";
-import { log } from "./lib/log";
-import * as Assets from "./lib/types";
 
-declare global {
-  namespace NodeJS {
-    interface Global {
-      __rootdir__: string;
-    }
-  }
-}
-
-global.__rootdir__ = __dirname || process.cwd();
-
-Sentry.init({
-  dsn: SENTRY_DSN,
-  release: `${pkg.name}@${pkg.version}`,
-  integrations: [new RewriteFrames({
-    root: global.__rootdir__
-  })],
-  // beforeSend(event): Sentry.Event {
-  //   if (event.user.email) {
-  //     delete event.user.email;
-  //   }
-  //   return event;
-  // }
-});
-
+/**
+ * Calls all fetch methods and calls all write methods
+ *
+ * @remark entry point to the script
+ *
+ * @param args argument vector
+ */
 async function main(args: string[]): Promise<void> {
-  const DEFAULT_OUTPUT_DIR = "output";
-  let [, , outputDirectory] = args;
-  if (process.env.OUTPUT_DIR) {
-    outputDirectory = process.env.OUTPUT_DIR
-  }
-  const outputDir = join(__dirname, outputDirectory || DEFAULT_OUTPUT_DIR);
-  try {
-    log("recreating output directory");
-    await remove(outputDir);
-    await mkdirp(outputDir);
-    const apiWrapper = new APIWrapper({
-      token: process.env.BOTMOCK_TOKEN,
-      teamId: process.env.BOTMOCK_TEAM_ID,
-      projectId: process.env.BOTMOCK_PROJECT_ID,
-      boardId: process.env.BOTMOCK_BOARD_ID,
-    });
-    apiWrapper.on("asset-fetched", (assetName: string) => {
-      log(`fetched ${assetName}`);
-    });
-    apiWrapper.on("error", (err: Error) => {
-      throw err;
-    });
-    log("fetching botmock assets");
-    const projectData: Assets.CollectedResponses = await apiWrapper.fetch();
-    const writer = new FileWriter({ outputDir, projectData });
-    await writer.createYml();
-    await writer.createMd();
-  } catch (err) {
-    log(err.stack, { hasError: true });
-    throw err;
+  const outputBasename = "output";
+  const outputDir = join(__dirname, outputBasename);
+  log("recreating output directory");
+  await fs.remove(outputDir);
+  await fs.mkdirp(outputDir);
+  log("fetching project data");
+  const { data: projectData }: any = await new Batcher({
+    token: process.env.BOTMOCK_TOKEN as string,
+    teamId: process.env.BOTMOCK_TEAM_ID as string,
+    projectId: process.env.BOTMOCK_PROJECT_ID as string,
+    boardId: process.env.BOTMOCK_BOARD_ID as string,
+  }).batchRequest([
+    "project",
+    "board",
+    "intents",
+    "entities",
+    "variables"
+  ]);
+  log("writing files");
+  const writer = FileWriter.getInstance({ outputDir, projectData });
+  await writer.write();
+  const [, , relativePathToRasaProject] = args;
+  if (relativePathToRasaProject) {
+    await copyOutput(outputDir, relativePathToRasaProject);
   }
   log("done");
 }
@@ -74,9 +45,17 @@ async function main(args: string[]): Promise<void> {
 process.on("unhandledRejection", () => {});
 process.on("uncaughtException", () => {});
 
-main(process.argv).catch(err => {
-  if (!process.env.SHOULD_OPT_OUT_OF_ERROR_REPORTING) {
-    Sentry.captureException(err);
-  }
-  process.exit(1);
-})
+main(process.argv).catch(async (err: Error) => {
+  log(err.stack as string, { isError: true });
+  const { message, stack } = err;
+  await fs.writeJson(join(__dirname, "err.json"), { message, stack }, { EOL, spaces: 2 });
+});
+
+/**
+ * Moves output data to an existing rasa project
+ * @remarks replaces existing files in rasa project
+ * @param relativePathToRasaProject relative path to rasa project directory
+ */
+async function copyOutput(outputDirectory:string, relativePathToRasaProject: string): Promise<void> {
+  await fs.copy(outputDirectory, relativePathToRasaProject);
+}
