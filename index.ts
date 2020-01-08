@@ -42,8 +42,8 @@ async function main(args: string[]): Promise<void> {
   log("done");
 }
 
-process.on("unhandledRejection", () => {});
-process.on("uncaughtException", () => {});
+process.on("unhandledRejection", () => { });
+process.on("uncaughtException", () => { });
 
 main(process.argv).catch(async (err: Error) => {
   log(err.stack as string, { isError: true });
@@ -56,6 +56,6 @@ main(process.argv).catch(async (err: Error) => {
  * @remarks replaces existing files in rasa project
  * @param relativePathToRasaProject relative path to rasa project directory
  */
-async function copyOutput(outputDirectory:string, relativePathToRasaProject: string): Promise<void> {
+async function copyOutput(outputDirectory: string, relativePathToRasaProject: string): Promise<void> {
   await fs.copy(outputDirectory, relativePathToRasaProject);
 }

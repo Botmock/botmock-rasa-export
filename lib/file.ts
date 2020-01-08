@@ -32,7 +32,7 @@ interface IConfig {
 export default class FileWriter extends flow.AbstractProject {
   private outputDir: string;
   private boardStructureByMessages: flow.SegmentizedStructure;
-  private stories: { [intentName: string]: string[] };
+  private stories: { [intentName: string]: string[]; };
   private static instance: FileWriter;
   /**
    * Creates instance of FileWriter
@@ -68,7 +68,7 @@ export default class FileWriter extends flow.AbstractProject {
               ...accu,
               [value]: void 0
             }), {})
-          }
+          };
         }, {}))
       .map(action => `utter_${action}`);
   }
@@ -76,7 +76,7 @@ export default class FileWriter extends flow.AbstractProject {
    * Creates object associating intent names with the ids of blocks that flow from them
    * @returns stories as an object
    */
-  private createStoriesFromIntentStructure(boardStructure: Map<string, string[]>): { [intentName: string]: string[] } {
+  private createStoriesFromIntentStructure(boardStructure: Map<string, string[]>): { [intentName: string]: string[]; } {
     const { intents } = this.projectData;
     return Array.from(boardStructure)
       .reduce((acc, [idOfMessageConnectedByIntent, idsOfConnectedIntents]: [string, string[]]) => ({
@@ -102,7 +102,7 @@ export default class FileWriter extends flow.AbstractProject {
    * Creates object describing templates for the project
    * @returns nested object containing content block data
    */
-  private createTemplates(): { [actionName: string]: { [type: string]: any } } {
+  private createTemplates(): { [actionName: string]: { [type: string]: any; }; } {
     return this.getUniqueActionNames()
       .reduce((acc, actionName: string) => {
         const ACTION_PREFIX_LENGTH = 6;
@@ -126,9 +126,9 @@ export default class FileWriter extends flow.AbstractProject {
                             title: button.title,
                             payload: button.payload,
                           },
-                        ]
+                        ];
                       }, []),
-                    ]
+                    ];
                   }, []),
                 };
                 break;
@@ -187,7 +187,7 @@ export default class FileWriter extends flow.AbstractProject {
               ...Array.isArray(payload) ? payload : Array.of(payload)
             ];
           }, [])
-        }
+        };
       }, {});
   }
   /**
@@ -207,7 +207,7 @@ export default class FileWriter extends flow.AbstractProject {
             return {
               ...accu,
               [variable.name]: variable.default_value || void 0,
-            }
+            };
           }, {})
         };
       }, {});
@@ -296,7 +296,7 @@ ${entities.map(entity => nlu.generateEntityContent(entity)).join(EOL)}`;
           }
           const actionsUnderIntent = this.stories[intentName].map((actionName: string) => (
             `  - utter_${actionName}`
-          )).concat(slot ? `  - slot${slot}`: []).join(EOL);
+          )).concat(slot ? `  - slot${slot}` : []).join(EOL);
           return `* ${this.sanitizeIntentName(intentName)}${slot}${EOL}${actionsUnderIntent}`;
         });
         const story = uuid();
@@ -319,7 +319,7 @@ ${entities.map(entity => nlu.generateEntityContent(entity)).join(EOL)}`;
    * @param slots the slots from which to create the string
    */
   private formatSlotSpecificYaml(slots: any[]): string {
-    const requiredSlots =  slots.reduce((acc, slot) => {
+    const requiredSlots = slots.reduce((acc, slot) => {
       return acc + Object.keys(slot).reduce((accu, slotName) => {
         const data = slot[slotName];
         const twoSpaces = " ".repeat(2);
