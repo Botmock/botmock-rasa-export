@@ -1,9 +1,9 @@
 import "dotenv/config";
+import { join } from "path";
+import { EOL } from "os";
 import * as fs from "fs-extra";
 import { Batcher } from "@botmock-api/client";
 import { default as log } from "@botmock-api/log";
-import { EOL } from "os";
-import { join } from "path";
 import { default as FileWriter } from "./lib/file";
 
 /**
@@ -35,6 +35,7 @@ async function main(args: string[]): Promise<void> {
   await writer.write();
   const [, , relativePathToRasaProject] = args;
   if (relativePathToRasaProject) {
+    log(`copying output to ${relativePathToRasaProject}`);
     await copyOutput(outputDir, relativePathToRasaProject);
   }
   log("done");
