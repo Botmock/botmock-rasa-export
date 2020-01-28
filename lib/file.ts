@@ -8,6 +8,7 @@ import { default as snakeCase } from "to-snake-case";
 import { join } from "path";
 import { EOL } from "os";
 import * as nlu from "./nlu";
+import { FlowItem, Intent } from "@botmock-api/flow";
 
 namespace Rasa {
   export enum SlotTypes {
@@ -278,27 +279,30 @@ ${entities.map(entity => nlu.generateEntityContent(entity)).join(EOL)}`;
     const data = Array.from(this.boardStructureByMessages.keys())
       .reduce((acc, idOfMessageConnectedByIntent: string) => {
         const idsOfConnectedIntents = this.boardStructureByMessages.get(idOfMessageConnectedByIntent) as any[];
-        const lineage = [
+        const lineage: string[] = [
           ...this.getIntentLineageForMessage(idOfMessageConnectedByIntent),
           ...idsOfConnectedIntents.map((intentId: string) => {
-            const { name } = this.getIntent(intentId) as flow.Intent;
+            // @ts-ignore
+            const { name } = this.getIntent(intentId) ?? {};
             return name;
           }),
         ];
         const requirements = this.representRequirementsForIntents();
-        const paths: string[] = lineage.map((intentName: string) => {
-          const { id: idOfIntent } = this.projectData.intents.find(intent => intent.name === intentName) as flow.Intent;
-          const [firstRequiredSlot] = requirements.get(idOfIntent) as any;
-          let slot: string = "";
-          if (firstRequiredSlot) {
-            const variable = this.projectData.variables.find(variable => variable.id === firstRequiredSlot.variable_id);
-            slot = `{"${variable?.name}": "${variable?.default_value}"}`;
-          }
-          const actionsUnderIntent = this.stories[intentName].map((actionName: string) => (
-            `  - utter_${actionName}`
-          )).concat(slot ? `  - slot${slot}` : []).join(EOL);
-          return `* ${this.sanitizeIntentName(intentName)}${slot}${EOL}${actionsUnderIntent}`;
-        });
+        const paths: string[] = lineage
+          .filter((intentName: string) => typeof this.projectData.intents.find(intent => intent.name === intentName) !== "undefined")
+          .map((intentName: string): string => {
+            const { id: idOfIntent } = this.projectData.intents.find(intent => intent.name === intentName) as Intent;
+            const [firstRequiredSlot] = requirements.get(idOfIntent) as any;
+            let slot: string = "";
+            if (firstRequiredSlot) {
+              const variable = this.projectData.variables.find(variable => variable.id === firstRequiredSlot.variable_id);
+              slot = `{"${variable?.name}": "${variable?.default_value}"}`;
+            }
+            const actionsUnderIntent = this.stories[intentName].map((actionName: string) => (
+              `  - utter_${actionName}`
+            )).concat(slot ? `  - slot${slot}` : []).join(EOL);
+            return `* ${this.sanitizeIntentName(intentName)}${slot}${EOL}${actionsUnderIntent}`;
+          });
         const story = uuid();
         const storyName = `## ${story}`;
         return acc + EOL + storyName + EOL + paths.join(EOL) + EOL;

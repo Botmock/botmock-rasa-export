@@ -8,9 +8,7 @@ import { default as FileWriter } from "./lib/file";
 
 /**
  * Calls all fetch methods and calls all write methods
- *
  * @remark entry point to the script
- *
  * @param args argument vector
  */
 async function main(args: string[]): Promise<void> {
