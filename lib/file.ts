@@ -21,7 +21,15 @@ namespace Botmock {
     node = "node",
     project = "project",
   }
-  export enum MessageTypes { }
+  export enum MessageTypes {
+    GENERIC = "generic",
+    DELAY = "delay",
+    JUMP = "jump",
+    WEBVIEW = "webview",
+    IMAGE = "image",
+    BUTTON = "button",
+    QUICK_REPLIES = "quick_replies",
+  }
 }
 
 export type ProjectData<T> = T extends Promise<infer K> ? K : any;
@@ -110,7 +118,7 @@ export default class FileWriter extends flow.AbstractProject {
           [actionName]: [message, ...this.gatherMessagesUpToNextIntent(message)].reduce((accu: any, message: flow.Message) => {
             let payload: string | {} | void = {};
             switch (message.message_type) {
-              case "generic":
+              case Botmock.MessageTypes.GENERIC:
                 payload = {
                   text: message.payload?.text,
                   buttons: message.payload?.elements?.reduce((acc: any, element: any) => {
@@ -130,11 +138,11 @@ export default class FileWriter extends flow.AbstractProject {
                   }, []),
                 };
                 break;
-              case "delay":
+              case Botmock.MessageTypes.DELAY:
                 // @ts-ignore
                 payload = { text: `waiting for ${message.payload?.show_for} ms` };
                 break;
-              case "jump":
+              case Botmock.MessageTypes.JUMP:
                 let label;
                 let jumpType;
                 try {
@@ -153,8 +161,8 @@ export default class FileWriter extends flow.AbstractProject {
                     break;
                 }
                 break;
-              case "webview":
-              case "image":
+              case Botmock.MessageTypes.WEBVIEW:
+              case Botmock.MessageTypes.IMAGE:
                 const imageKeyName = message.message_type === "webview"
                   ? "image"
                   : "image_url";
@@ -164,11 +172,9 @@ export default class FileWriter extends flow.AbstractProject {
                 }
                 payload = data;
                 break;
-              case "button":
-              case "quick_replies":
-                const key = message.payload?.hasOwnProperty("buttons")
-                  ? "buttons"
-                  : "quick_replies";
+              case Botmock.MessageTypes.BUTTON:
+              case Botmock.MessageTypes.QUICK_REPLIES:
+                const key = message.payload?.hasOwnProperty("buttons") ? "buttons" : "quick_replies";
                 payload = (message.payload as any)[key].map(({ title, payload }: any) => ({ buttons: { title, payload } }));
                 break;
               default:
@@ -189,27 +195,27 @@ export default class FileWriter extends flow.AbstractProject {
   /**
    * Represent all required slots as an array of objects able to be consumed as yml
    */
-  private representRequiredSlots(): any[] {
-    const uniqueNamesOfRequiredSlots = Array.from(this.representRequirementsForIntents())
-      .reduce((acc, pair: [string, any]) => {
-        const [, requiredSlots] = pair;
-        return {
-          ...acc,
-          ...requiredSlots.reduce((accu: any, slot: flow.Slot) => {
-            const variable = this.projectData.variables.find(variable => variable.id === slot.variable_id);
-            if (!variable) {
-              return accu;
-            }
-            return {
-              ...accu,
-              [variable.name]: variable.default_value || void 0,
-            };
-          }, {})
-        };
-      }, {});
-    return Object.entries(uniqueNamesOfRequiredSlots)
-      .map(([slotName, defaultValue]) => ({ [slotName]: { type: Rasa.SlotTypes.text, initial_value: defaultValue } }));
-  }
+  // private representRequiredSlots(): any[] {
+  //   const uniqueNamesOfRequiredSlots = Array.from(this.representRequirementsForIntents())
+  //     .reduce((acc, pair: [string, any]) => {
+  //       const [, requiredSlots] = pair;
+  //       return {
+  //         ...acc,
+  //         ...requiredSlots.reduce((accu: any, slot: flow.Slot) => {
+  //           const variable = this.projectData.variables.find(variable => variable.id === slot.variable_id);
+  //           if (!variable) {
+  //             return accu;
+  //           }
+  //           return {
+  //             ...accu,
+  //             [variable.name]: variable.default_value || void 0,
+  //           };
+  //         }, {})
+  //       };
+  //     }, {});
+  //   return Object.entries(uniqueNamesOfRequiredSlots)
+  //     .map(([slotName, defaultValue]) => ({ [slotName]: { type: Rasa.SlotTypes.text, initial_value: defaultValue } }));
+  // }
   /**
    * Creates markdown content for intents
    * @returns file contents as a string
@@ -218,7 +224,7 @@ export default class FileWriter extends flow.AbstractProject {
     const { intents, entities } = this.projectData;
     return `${intents.map((intent: flow.Intent, i: number) => {
       // @ts-ignore
-      const { id, name: intentName, utterances: examples, updated_at: { date: timestamp } } = intent;
+      const { id, name: intentName, utterances: examples } = intent;
       return `${i !== 0 ? EOL : ""}<!-- ${new Date().toISOString()} -->
 ## intent:${this.sanitizeIntentName(intentName)}
 ${examples.map((example: any) => nlu.generateExampleContent(example, entities)).join(EOL)}`;
@@ -317,19 +323,21 @@ ${entities.map(entity => nlu.generateEntityContent(entity)).join(EOL)}`;
    * rasa does not treat the slots as a standard "yamlized" object
    * @param slots the slots from which to create the string
    */
-  private formatSlotSpecificYaml(slots: any[]): string {
-    const requiredSlots = slots.reduce((acc, slot) => {
-      return acc + Object.keys(slot).reduce((accu, slotName) => {
-        const data = slot[slotName];
-        const twoSpaces = " ".repeat(2);
-        const fourSpaces = " ".repeat(4);
-        return `${accu}${EOL}${twoSpaces}${slotName}:${EOL}${fourSpaces}type: ${data.type}${EOL}${fourSpaces}auto_fill: False${EOL}`;
-      }, "");
-    }, "");
-    return `slots:${requiredSlots}`;
-  }
+  // private formatSlotSpecificYaml(slots: any[]): string {
+  //   const requiredSlots = slots.reduce((acc, slot) => {
+  //     return acc + Object.keys(slot).reduce((accu, slotName) => {
+  //       const data = slot[slotName];
+  //       const twoSpaces = " ".repeat(2);
+  //       const fourSpaces = " ".repeat(4);
+  //       return `${accu}${EOL}${twoSpaces}${slotName}:${EOL}${fourSpaces}type: ${data.type}${EOL}${fourSpaces}auto_fill: False${EOL}`;
+  //     }, "");
+  //   }, "");
+  //   return `slots:${requiredSlots}`;
+  // }
   /**
    * Writes yml domain file
+   * @remark ..
+   * @see https://rasa.com/docs/rasa/core/domains/#images-and-buttons
    */
   private async writeDomainFile(): Promise<void> {
     const outputFilePath = join(this.outputDir, "domain.yml");
@@ -338,13 +346,14 @@ ${entities.map(entity => nlu.generateEntityContent(entity)).join(EOL)}`;
       intents: this.projectData.intents.map(intent => this.sanitizeIntentName(intent.name)),
       entities: this.projectData.variables.map(variable => variable.name.replace(/\s/, "")),
       actions: this.getUniqueActionNames(),
-      templates: this.createTemplates(),
+      // templates: this.createTemplates(),
     };
     let serialData: string = toYAML(data);
-    const requiredSlots = this.representRequiredSlots();
-    if (Array.isArray(requiredSlots) && requiredSlots.length) {
-      serialData += this.formatSlotSpecificYaml(requiredSlots);
-    }
+    let templates: string;
+    // const requiredSlots = this.representRequiredSlots();
+    // if (Array.isArray(requiredSlots) && requiredSlots.length) {
+    //   serialData += this.formatSlotSpecificYaml(requiredSlots);
+    // }
     return await writeFile(outputFilePath, `${firstLine}${EOL}${serialData}`);
   }
   /**
