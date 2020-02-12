@@ -31,7 +31,6 @@
   "license": "MIT",
   "dependencies": {
     "@botmock-api/client": "1.0.0",
-    "@botmock-api/flow": "0.7.0",
     "@botmock-api/log": "0.2.0",
     "@botmock-api/text": "^0.2.2",
     "dotenv": "^8.2.0",
@@ -42,14 +41,15 @@
     "yaml": "^1.7.2"
   },
   "devDependencies": {
+    "@botmock-api/flow": "^0.8.0",
     "@types/fs-extra": "^8.0.1",
     "@types/jest": "24.0.22",
-    "@types/node": "^13.1.4",
-    "@types/uuid": "^3.4.6",
+    "@types/node": "^13.7.1",
+    "@types/uuid": "^3.4.7",
     "@types/yaml": "^1.2.0",
     "jest": "24.9.0",
     "ts-jest": "^24.3.0",
-    "ts-node": "^8.5.4",
-    "typescript": "^3.7.4"
+    "ts-node": "^8.6.2",
+    "typescript": "^3.7.5"
   }
 }

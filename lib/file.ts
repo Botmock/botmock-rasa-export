@@ -8,6 +8,7 @@ import { default as snakeCase } from "to-snake-case";
 import { join } from "path";
 import { EOL } from "os";
 import * as nlu from "./nlu";
+import { Intent } from "@botmock-api/flow";
 
 namespace Rasa {
   export enum SlotTypes {
@@ -19,6 +20,15 @@ namespace Botmock {
   export enum JumpTypes {
     node = "node",
     project = "project",
+  }
+  export enum MessageTypes {
+    GENERIC = "generic",
+    DELAY = "delay",
+    JUMP = "jump",
+    WEBVIEW = "webview",
+    IMAGE = "image",
+    BUTTON = "button",
+    QUICK_REPLIES = "quick_replies",
   }
 }
 
@@ -34,10 +44,6 @@ export default class FileWriter extends flow.AbstractProject {
   private boardStructureByMessages: flow.SegmentizedStructure;
   private stories: { [intentName: string]: string[]; };
   private static instance: FileWriter;
-  /**
-   * Creates instance of FileWriter
-   * @param config configuration object
-   */
   private constructor(config: IConfig) {
     super({ projectData: config.projectData as ProjectData<typeof config.projectData> });
     this.outputDir = config.outputDir;
@@ -99,94 +105,91 @@ export default class FileWriter extends flow.AbstractProject {
       }), {});
   }
   /**
-   * Creates object describing templates for the project
+   * Creates object describing responses for the project
    * @returns nested object containing content block data
    */
-  private createTemplates(): { [actionName: string]: { [type: string]: any; }; } {
+  private getResponses(): { [actionName: string]: { [type: string]: any; }; } {
     return this.getUniqueActionNames()
       .reduce((acc, actionName: string) => {
         const ACTION_PREFIX_LENGTH = 6;
         const message = this.getMessage(actionName.slice(ACTION_PREFIX_LENGTH)) as flow.Message;
         return {
           ...acc,
-          [actionName]: [message, ...this.gatherMessagesUpToNextIntent(message)].reduce((accu: any, message: flow.Message) => {
-            let payload: string | {} | void = {};
-            switch (message.message_type) {
-              case "generic":
-                payload = {
-                  text: message.payload?.text,
-                  buttons: message.payload?.elements?.reduce((acc: any, element: any) => {
-                    const buttons: any[] = Array.isArray(element.buttons) ? element.buttons : Array.of(element.buttons);
-                    return [
-                      ...acc,
-                      ...buttons.reduce((accu, button) => {
-                        return [
-                          ...accu,
-                          {
-                            title: button.title,
-                            payload: button.payload,
-                          },
-                        ];
-                      }, []),
-                    ];
-                  }, []),
-                };
-                break;
-              case "delay":
-                // @ts-ignore
-                payload = { text: `waiting for ${message.payload?.show_for} ms` };
-                break;
-              case "jump":
-                let label;
-                let jumpType;
-                try {
-                  const json = JSON.parse(message.payload?.selectedResult);
-                  label = json.label;
-                  jumpType = json.jumpType;
-                } catch (_) {
+          [actionName]: [message, ...this.gatherMessagesUpToNextIntent(message)]
+            .reduce((accu: any, message: flow.Message) => {
+              let payload: string | {} | void = {};
+              switch (message.message_type) {
+                case Botmock.MessageTypes.GENERIC:
+                  payload = {
+                    text: message.payload?.text,
+                    buttons: message.payload?.elements?.reduce((acc: any, element: any) => {
+                      const buttons: any[] = Array.isArray(element.buttons) ? element.buttons : Array.of(element.buttons);
+                      return [
+                        ...acc,
+                        ...buttons.reduce((accu, button) => {
+                          return [
+                            ...accu,
+                            {
+                              title: button.title,
+                              payload: button.payload,
+                            },
+                          ];
+                        }, []),
+                      ];
+                    }, []),
+                  };
                   break;
-                }
-                switch (jumpType) {
-                  case Botmock.JumpTypes.node:
-                    payload = { text: `jumped to block ${label}` };
+                case Botmock.MessageTypes.DELAY:
+                  // @ts-ignore
+                  payload = { text: `waiting for ${message.payload?.show_for} ms` };
+                  break;
+                case Botmock.MessageTypes.JUMP:
+                  let label;
+                  let jumpType;
+                  try {
+                    const json = JSON.parse(message.payload?.selectedResult);
+                    label = json.label;
+                    jumpType = json.jumpType;
+                  } catch (_) {
                     break;
-                  case Botmock.JumpTypes.project:
-                    payload = { text: `jumped to project ${label}` };
-                    break;
-                }
-                break;
-              case "webview":
-              case "image":
-                const imageKeyName = message.message_type === "webview"
-                  ? "image"
-                  : "image_url";
-                // @ts-ignore
-                const data: any = { image: message.payload[imageKeyName] };
-                if (message.payload?.text) {
-                  data.text = message.payload?.text;
-                }
-                payload = data;
-                break;
-              case "button":
-              case "quick_replies":
-                const key = message.payload?.hasOwnProperty("buttons")
-                  ? "buttons"
-                  : "quick_replies";
-                // @ts-ignore
-                payload = message.payload[key].map(({ title, payload }: any) => ({ buttons: { title, payload } }));
-                break;
-              default:
-                const text = typeof message.payload?.text !== "undefined"
-                  ? wrapEntitiesWithChar(message.payload?.text as string, "{")
-                  : JSON.stringify(message.payload);
-                payload = { text };
-                break;
-            }
-            return [
-              ...accu,
-              ...Array.isArray(payload) ? payload : Array.of(payload)
-            ];
-          }, [])
+                  }
+                  switch (jumpType) {
+                    case Botmock.JumpTypes.node:
+                      payload = { text: `jumped to block ${label}` };
+                      break;
+                    case Botmock.JumpTypes.project:
+                      payload = { text: `jumped to project ${label}` };
+                      break;
+                  }
+                  break;
+                case Botmock.MessageTypes.WEBVIEW:
+                case Botmock.MessageTypes.IMAGE:
+                  const imageKeyName = message.message_type === "webview" ? "image" : "image_url";
+                  const data: any = { image: (message.payload as any)[imageKeyName] };
+                  if (message.payload?.text) {
+                    data.text = message.payload?.text;
+                  }
+                  payload = data;
+                  break;
+                case Botmock.MessageTypes.BUTTON:
+                case Botmock.MessageTypes.QUICK_REPLIES:
+                  const key = message.payload?.hasOwnProperty("buttons") ? "buttons" : "quick_replies";
+                  const buttonText = message.payload?.text;
+                  const buttons = (message.payload as any)[key].map(({ title, payload }: any) => ({ buttons: { title, payload } }))
+                  payload = [{ text: buttonText }].concat(buttons);
+                  break;
+                default:
+                  const text = typeof message.payload?.text !== "undefined"
+                    ? wrapEntitiesWithChar(message.payload?.text as string, "{")
+                    : JSON.stringify(message.payload);
+                  payload = { text };
+                  break;
+              }
+              return [
+                ...accu,
+                ...Array.isArray(payload) ? payload : Array.of(payload)
+              ];
+            }, [])
         };
       }, {});
   }
@@ -222,7 +225,7 @@ export default class FileWriter extends flow.AbstractProject {
     const { intents, entities } = this.projectData;
     return `${intents.map((intent: flow.Intent, i: number) => {
       // @ts-ignore
-      const { id, name: intentName, utterances: examples, updated_at: { date: timestamp } } = intent;
+      const { id, name: intentName, utterances: examples } = intent;
       return `${i !== 0 ? EOL : ""}<!-- ${new Date().toISOString()} -->
 ## intent:${this.sanitizeIntentName(intentName)}
 ${examples.map((example: any) => nlu.generateExampleContent(example, entities)).join(EOL)}`;
@@ -278,27 +281,30 @@ ${entities.map(entity => nlu.generateEntityContent(entity)).join(EOL)}`;
     const data = Array.from(this.boardStructureByMessages.keys())
       .reduce((acc, idOfMessageConnectedByIntent: string) => {
         const idsOfConnectedIntents = this.boardStructureByMessages.get(idOfMessageConnectedByIntent) as any[];
-        const lineage = [
+        const lineage: string[] = [
           ...this.getIntentLineageForMessage(idOfMessageConnectedByIntent),
           ...idsOfConnectedIntents.map((intentId: string) => {
-            const { name } = this.getIntent(intentId) as flow.Intent;
+            // @ts-ignore
+            const { name } = this.getIntent(intentId) ?? {};
             return name;
           }),
         ];
         const requirements = this.representRequirementsForIntents();
-        const paths: string[] = lineage.map((intentName: string) => {
-          const { id: idOfIntent } = this.projectData.intents.find(intent => intent.name === intentName) as flow.Intent;
-          const [firstRequiredSlot] = requirements.get(idOfIntent) as any;
-          let slot: string = "";
-          if (firstRequiredSlot) {
-            const variable = this.projectData.variables.find(variable => variable.id === firstRequiredSlot.variable_id);
-            slot = `{"${variable?.name}": "${variable?.default_value}"}`;
-          }
-          const actionsUnderIntent = this.stories[intentName].map((actionName: string) => (
-            `  - utter_${actionName}`
-          )).concat(slot ? `  - slot${slot}` : []).join(EOL);
-          return `* ${this.sanitizeIntentName(intentName)}${slot}${EOL}${actionsUnderIntent}`;
-        });
+        const paths: string[] = lineage
+          .filter((intentName: string) => typeof this.projectData.intents.find(intent => intent.name === intentName) !== "undefined")
+          .map((intentName: string): string => {
+            const { id: idOfIntent } = this.projectData.intents.find(intent => intent.name === intentName) as Intent;
+            const [firstRequiredSlot] = requirements.get(idOfIntent) as any;
+            let slot: string = "";
+            if (firstRequiredSlot) {
+              const variable = this.projectData.variables.find(variable => variable.id === firstRequiredSlot.variable_id);
+              slot = `{"${variable?.name}": "${variable?.default_value}"}`;
+            }
+            const actionsUnderIntent = this.stories[intentName].map((actionName: string) => (
+              `  - utter_${actionName}`
+            )).concat(slot ? `  - slot${slot}` : []).join(EOL);
+            return `* ${this.sanitizeIntentName(intentName)}${slot}${EOL}${actionsUnderIntent}`;
+          });
         const story = uuid();
         const storyName = `## ${story}`;
         return acc + EOL + storyName + EOL + paths.join(EOL) + EOL;
@@ -331,6 +337,12 @@ ${entities.map(entity => nlu.generateEntityContent(entity)).join(EOL)}`;
   }
   /**
    * Writes yml domain file
+   * @remark Manually appends serial data with templates for the sake of having
+   *         more control over final .yml format, which Rasa CLI is sensitive to.
+   * @see https://rasa.com/docs/rasa/core/domains/#images-and-buttons
+   * @todo custom payloads(?) and channel-specific responses(?)
+   * @see https://rasa.com/docs/rasa/core/domains/#custom-output-payloads
+   * @see https://rasa.com/docs/rasa/core/domains/#channel-specific-responses
    */
   private async writeDomainFile(): Promise<void> {
     const outputFilePath = join(this.outputDir, "domain.yml");
@@ -339,7 +351,7 @@ ${entities.map(entity => nlu.generateEntityContent(entity)).join(EOL)}`;
       intents: this.projectData.intents.map(intent => this.sanitizeIntentName(intent.name)),
       entities: this.projectData.variables.map(variable => variable.name.replace(/\s/, "")),
       actions: this.getUniqueActionNames(),
-      templates: this.createTemplates(),
+      responses: this.getResponses(),
     };
     let serialData: string = toYAML(data);
     const requiredSlots = this.representRequiredSlots();
