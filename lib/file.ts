@@ -8,7 +8,7 @@ import { default as snakeCase } from "to-snake-case";
 import { join } from "path";
 import { EOL } from "os";
 import * as nlu from "./nlu";
-import { FlowItem, Intent } from "@botmock-api/flow";
+import { Intent } from "@botmock-api/flow";
 
 namespace Rasa {
   export enum SlotTypes {
@@ -21,6 +21,7 @@ namespace Botmock {
     node = "node",
     project = "project",
   }
+  export enum MessageTypes { }
 }
 
 export type ProjectData<T> = T extends Promise<infer K> ? K : any;
