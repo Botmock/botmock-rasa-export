@@ -105,10 +105,10 @@ export default class FileWriter extends flow.AbstractProject {
       }), {});
   }
   /**
-   * Creates object describing templates for the project
+   * Creates object describing responses for the project
    * @returns nested object containing content block data
    */
-  private createTemplates(): { [actionName: string]: { [type: string]: any; }; } {
+  private getResponses(): { [actionName: string]: { [type: string]: any; }; } {
     return this.getUniqueActionNames()
       .reduce((acc, actionName: string) => {
         const ACTION_PREFIX_LENGTH = 6;
@@ -184,6 +184,7 @@ export default class FileWriter extends flow.AbstractProject {
                 payload = { text };
                 break;
             }
+            // console.log(payload);
             return [
               ...accu,
               ...Array.isArray(payload) ? payload : Array.of(payload)
@@ -195,27 +196,27 @@ export default class FileWriter extends flow.AbstractProject {
   /**
    * Represent all required slots as an array of objects able to be consumed as yml
    */
-  // private representRequiredSlots(): any[] {
-  //   const uniqueNamesOfRequiredSlots = Array.from(this.representRequirementsForIntents())
-  //     .reduce((acc, pair: [string, any]) => {
-  //       const [, requiredSlots] = pair;
-  //       return {
-  //         ...acc,
-  //         ...requiredSlots.reduce((accu: any, slot: flow.Slot) => {
-  //           const variable = this.projectData.variables.find(variable => variable.id === slot.variable_id);
-  //           if (!variable) {
-  //             return accu;
-  //           }
-  //           return {
-  //             ...accu,
-  //             [variable.name]: variable.default_value || void 0,
-  //           };
-  //         }, {})
-  //       };
-  //     }, {});
-  //   return Object.entries(uniqueNamesOfRequiredSlots)
-  //     .map(([slotName, defaultValue]) => ({ [slotName]: { type: Rasa.SlotTypes.text, initial_value: defaultValue } }));
-  // }
+  private representRequiredSlots(): any[] {
+    const uniqueNamesOfRequiredSlots = Array.from(this.representRequirementsForIntents())
+      .reduce((acc, pair: [string, any]) => {
+        const [, requiredSlots] = pair;
+        return {
+          ...acc,
+          ...requiredSlots.reduce((accu: any, slot: flow.Slot) => {
+            const variable = this.projectData.variables.find(variable => variable.id === slot.variable_id);
+            if (!variable) {
+              return accu;
+            }
+            return {
+              ...accu,
+              [variable.name]: variable.default_value || void 0,
+            };
+          }, {})
+        };
+      }, {});
+    return Object.entries(uniqueNamesOfRequiredSlots)
+      .map(([slotName, defaultValue]) => ({ [slotName]: { type: Rasa.SlotTypes.text, initial_value: defaultValue } }));
+  }
   /**
    * Creates markdown content for intents
    * @returns file contents as a string
@@ -323,21 +324,25 @@ ${entities.map(entity => nlu.generateEntityContent(entity)).join(EOL)}`;
    * rasa does not treat the slots as a standard "yamlized" object
    * @param slots the slots from which to create the string
    */
-  // private formatSlotSpecificYaml(slots: any[]): string {
-  //   const requiredSlots = slots.reduce((acc, slot) => {
-  //     return acc + Object.keys(slot).reduce((accu, slotName) => {
-  //       const data = slot[slotName];
-  //       const twoSpaces = " ".repeat(2);
-  //       const fourSpaces = " ".repeat(4);
-  //       return `${accu}${EOL}${twoSpaces}${slotName}:${EOL}${fourSpaces}type: ${data.type}${EOL}${fourSpaces}auto_fill: False${EOL}`;
-  //     }, "");
-  //   }, "");
-  //   return `slots:${requiredSlots}`;
-  // }
+  private formatSlotSpecificYaml(slots: any[]): string {
+    const requiredSlots = slots.reduce((acc, slot) => {
+      return acc + Object.keys(slot).reduce((accu, slotName) => {
+        const data = slot[slotName];
+        const twoSpaces = " ".repeat(2);
+        const fourSpaces = " ".repeat(4);
+        return `${accu}${EOL}${twoSpaces}${slotName}:${EOL}${fourSpaces}type: ${data.type}${EOL}${fourSpaces}auto_fill: False${EOL}`;
+      }, "");
+    }, "");
+    return `slots:${requiredSlots}`;
+  }
   /**
    * Writes yml domain file
-   * @remark ..
+   * @remark Manually appends serial data with templates for the sake of having
+   *         more control over final .yml format, which Rasa CLI is sensitive to.
    * @see https://rasa.com/docs/rasa/core/domains/#images-and-buttons
+   * @todo custom payloads(?) and channel-specific responses(?)
+   * @see https://rasa.com/docs/rasa/core/domains/#custom-output-payloads
+   * @see https://rasa.com/docs/rasa/core/domains/#channel-specific-responses
    */
   private async writeDomainFile(): Promise<void> {
     const outputFilePath = join(this.outputDir, "domain.yml");
@@ -346,14 +351,13 @@ ${entities.map(entity => nlu.generateEntityContent(entity)).join(EOL)}`;
       intents: this.projectData.intents.map(intent => this.sanitizeIntentName(intent.name)),
       entities: this.projectData.variables.map(variable => variable.name.replace(/\s/, "")),
       actions: this.getUniqueActionNames(),
-      // templates: this.createTemplates(),
+      responses: this.getResponses(),
     };
     let serialData: string = toYAML(data);
-    let templates: string;
-    // const requiredSlots = this.representRequiredSlots();
-    // if (Array.isArray(requiredSlots) && requiredSlots.length) {
-    //   serialData += this.formatSlotSpecificYaml(requiredSlots);
-    // }
+    const requiredSlots = this.representRequiredSlots();
+    if (Array.isArray(requiredSlots) && requiredSlots.length) {
+      serialData += this.formatSlotSpecificYaml(requiredSlots);
+    }
     return await writeFile(outputFilePath, `${firstLine}${EOL}${serialData}`);
   }
   /**
