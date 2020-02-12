@@ -35,10 +35,6 @@ export default class FileWriter extends flow.AbstractProject {
   private boardStructureByMessages: flow.SegmentizedStructure;
   private stories: { [intentName: string]: string[]; };
   private static instance: FileWriter;
-  /**
-   * Creates instance of FileWriter
-   * @param config configuration object
-   */
   private constructor(config: IConfig) {
     super({ projectData: config.projectData as ProjectData<typeof config.projectData> });
     this.outputDir = config.outputDir;
@@ -161,8 +157,7 @@ export default class FileWriter extends flow.AbstractProject {
                 const imageKeyName = message.message_type === "webview"
                   ? "image"
                   : "image_url";
-                // @ts-ignore
-                const data: any = { image: message.payload[imageKeyName] };
+                const data: any = { image: (message.payload as any)[imageKeyName] };
                 if (message.payload?.text) {
                   data.text = message.payload?.text;
                 }
@@ -173,8 +168,7 @@ export default class FileWriter extends flow.AbstractProject {
                 const key = message.payload?.hasOwnProperty("buttons")
                   ? "buttons"
                   : "quick_replies";
-                // @ts-ignore
-                payload = message.payload[key].map(({ title, payload }: any) => ({ buttons: { title, payload } }));
+                payload = (message.payload as any)[key].map(({ title, payload }: any) => ({ buttons: { title, payload } }));
                 break;
               default:
                 const text = typeof message.payload?.text !== "undefined"
