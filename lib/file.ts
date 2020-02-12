@@ -164,9 +164,7 @@ export default class FileWriter extends flow.AbstractProject {
                   break;
                 case Botmock.MessageTypes.WEBVIEW:
                 case Botmock.MessageTypes.IMAGE:
-                  const imageKeyName = message.message_type === "webview"
-                    ? "image"
-                    : "image_url";
+                  const imageKeyName = message.message_type === "webview" ? "image" : "image_url";
                   const data: any = { image: (message.payload as any)[imageKeyName] };
                   if (message.payload?.text) {
                     data.text = message.payload?.text;
@@ -176,7 +174,9 @@ export default class FileWriter extends flow.AbstractProject {
                 case Botmock.MessageTypes.BUTTON:
                 case Botmock.MessageTypes.QUICK_REPLIES:
                   const key = message.payload?.hasOwnProperty("buttons") ? "buttons" : "quick_replies";
-                  payload = (message.payload as any)[key].map(({ title, payload }: any) => ({ buttons: { title, payload } }));
+                  const buttonText = message.payload?.text;
+                  const buttons = (message.payload as any)[key].map(({ title, payload }: any) => ({ buttons: { title, payload } }))
+                  payload = [{ text: buttonText }].concat(buttons);
                   break;
                 default:
                   const text = typeof message.payload?.text !== "undefined"
@@ -185,7 +185,6 @@ export default class FileWriter extends flow.AbstractProject {
                   payload = { text };
                   break;
               }
-              console.log(payload);
               return [
                 ...accu,
                 ...Array.isArray(payload) ? payload : Array.of(payload)
