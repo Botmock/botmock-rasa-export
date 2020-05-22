@@ -14,6 +14,7 @@ namespace Rasa {
   export enum SlotTypes {
     text = "text",
   }
+  export type Response = { [actionName: string]: { [type: string]: any; }; };
 }
 
 namespace Botmock {
@@ -108,10 +109,10 @@ export default class FileWriter extends flow.AbstractProject {
    * Creates object describing responses for the project
    * @returns nested object containing content block data
    */
-  private getResponses(): { [actionName: string]: { [type: string]: any; }; } {
+  private getResponses(): Rasa.Response {
+    const ACTION_PREFIX_LENGTH = 6;
     return this.getUniqueActionNames()
       .reduce((acc, actionName: string) => {
-        const ACTION_PREFIX_LENGTH = 6;
         const message = this.getMessage(actionName.slice(ACTION_PREFIX_LENGTH)) as flow.Message;
         return {
           ...acc,
@@ -174,9 +175,8 @@ export default class FileWriter extends flow.AbstractProject {
                 case Botmock.MessageTypes.BUTTON:
                 case Botmock.MessageTypes.QUICK_REPLIES:
                   const key = message.payload?.hasOwnProperty("buttons") ? "buttons" : "quick_replies";
-                  const buttonText = message.payload?.text;
                   const buttons = (message.payload as any)[key].map(({ title, payload }: any) => ({ buttons: { title, payload } }));
-                  payload = [{ text: buttonText }].concat(buttons);
+                  payload = [{ text: message.payload?.text }].concat(...buttons);
                   break;
                 default:
                   const text = typeof message.payload?.text !== "undefined"
