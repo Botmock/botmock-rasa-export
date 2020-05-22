@@ -175,7 +175,7 @@ export default class FileWriter extends flow.AbstractProject {
                 case Botmock.MessageTypes.QUICK_REPLIES:
                   const key = message.payload?.hasOwnProperty("buttons") ? "buttons" : "quick_replies";
                   const buttonText = message.payload?.text;
-                  const buttons = (message.payload as any)[key].map(({ title, payload }: any) => ({ buttons: { title, payload } }))
+                  const buttons = (message.payload as any)[key].map(({ title, payload }: any) => ({ buttons: { title, payload } }));
                   payload = [{ text: buttonText }].concat(buttons);
                   break;
                 default:
