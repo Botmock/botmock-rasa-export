@@ -140,8 +140,8 @@ export default class FileWriter extends flow.AbstractProject {
     const { intents } = this.projectData;
     type Entry = [string, string[]];
     return Array.from(boardStructure)
-      .reduce((connectedIntents, [messageId, connectedIntentIds]: Entry) => ({
-        ...connectedIntents,
+      .reduce((connections, [messageId, connectedIntentIds]: Entry) => ({
+        ...connections,
         ...connectedIntentIds.reduce((innerConnectedIntents, id: string) => {
           const message = this.getMessage(messageId) as Botmock.Message;
           const intent = intents.find(intent => intent.id === id) as flow.Intent;
