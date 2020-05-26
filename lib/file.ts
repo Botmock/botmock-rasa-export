@@ -9,6 +9,7 @@ import { join } from "path";
 import { EOL } from "os";
 import * as nlu from "./nlu";
 import { Intent } from "@botmock-api/flow";
+import { v4 } from "uuid";
 
 namespace Rasa {
   export enum SlotTypes {
@@ -23,6 +24,24 @@ namespace Rasa {
 }
 
 namespace Botmock {
+  export interface Message {
+    message_id: string;
+    message_type: string;
+    previous_message_ids: any[];
+    next_message_ids: any[];
+    is_root: boolean;
+    payload: Partial<{
+      workflow_index: number;
+      nodeName: string;
+      context: [];
+      elements: [];
+      text: string;
+      quick_replies: any[];
+      buttons: any[];
+      selectedResult: any;
+      image_url: string;
+    }>;
+  };
   export enum JumpTypes {
     node = "node",
     project = "project",
@@ -46,6 +65,7 @@ interface IConfig {
 }
 
 export default class FileWriter extends flow.AbstractProject {
+  private welcomeIntent!: flow.Intent;
   private outputDir: string;
   private boardStructureByMessages: flow.SegmentizedStructure;
   private stories: { [intentName: string]: string[]; };
@@ -54,6 +74,34 @@ export default class FileWriter extends flow.AbstractProject {
     super({ projectData: config.projectData as ProjectData<typeof config.projectData> });
     this.outputDir = config.outputDir;
     this.boardStructureByMessages = this.segmentizeBoardFromMessages();
+    for (const message of this.projectData.board.board.messages) {
+      const [rootParentId] = message.previous_message_ids?.filter(previous => {
+        const previousMessage = this.getMessage(previous.message_id) as Botmock.Message;
+        return previousMessage.is_root;
+      }).map(previous => previous.message_id) as any[];
+      if (rootParentId) {
+        if (!this.boardStructureByMessages.get(rootParentId)) {
+          this.welcomeIntent = {
+            id: v4(),
+            name: "welcome",
+            utterances: [{ text: "hi", variables: [] }],
+            created_at: {
+              date: new Date().toISOString(),
+              timezone_type: 3,
+              timezone: 'UTC'
+            },
+            updated_at: {
+              date: new Date().toISOString(),
+              timezone_type: 3,
+              timezone: 'UTC'
+            },
+            is_global: false,
+            slots: null,
+          } as flow.Intent;
+          this.boardStructureByMessages.set(rootParentId, [this.welcomeIntent.id]);
+        }
+      }
+    }
     this.stories = this.createStoriesFromIntentStructure(this.boardStructureByMessages);
   }
   /**
@@ -73,39 +121,48 @@ export default class FileWriter extends flow.AbstractProject {
   private getUniqueActionNames(): ReadonlyArray<string> {
     return Object.keys(
       Object.values(this.stories)
-        .reduce((acc, values: string[]) => {
+        .reduce((actions, values: string[]) => {
           return {
-            ...acc,
-            ...values.reduce((accu, value) => ({
-              ...accu,
-              [value]: void 0
+            ...actions,
+            ...values.reduce((innerActions, value) => ({
+              ...innerActions,
+              [value]: void 0,
             }), {})
           };
         }, {}))
       .map(action => `utter_${action}`);
   }
   /**
-   * Creates object associating intent names with the ids of blocks that flow from them
+   * Creates object of intent names -> blocks they are connected to.
    * @returns stories as an object
    */
   private createStoriesFromIntentStructure(boardStructure: Map<string, string[]>): { [intentName: string]: string[]; } {
     const { intents } = this.projectData;
+    type Entry = [string, string[]];
     return Array.from(boardStructure)
-      .reduce((acc, [idOfMessageConnectedByIntent, idsOfConnectedIntents]: [string, string[]]) => ({
-        ...acc,
-        ...idsOfConnectedIntents.reduce((accu, id: string) => {
-          const message: any = this.getMessage(idOfMessageConnectedByIntent);
+      .reduce((connectedIntents, [messageId, connectedIntentIds]: Entry) => ({
+        ...connectedIntents,
+        ...connectedIntentIds.reduce((innerConnectedIntents, id: string) => {
+          const message = this.getMessage(messageId) as Botmock.Message;
           const intent = intents.find(intent => intent.id === id) as flow.Intent;
           if (typeof intent !== "undefined") {
             return {
-              ...accu,
+              ...innerConnectedIntents,
               [intent.name]: [
                 message,
-                ...this.gatherMessagesUpToNextIntent(message)
+                ...this.gatherMessagesUpToNextIntent(message as Botmock.Message)
               ].map(message => message.message_id)
             };
+          } else if (message.is_root) {
+            return {
+              ...innerConnectedIntents,
+              [this.welcomeIntent.name]: [
+                message,
+                ...this.gatherMessagesUpToNextIntent(message as Botmock.Message)
+              ].map(message => message.message_id),
+            };
           } else {
-            return accu;
+            return innerConnectedIntents;
           }
         }, {})
       }), {});
@@ -116,12 +173,12 @@ export default class FileWriter extends flow.AbstractProject {
    */
   private getTemplates(): Rasa.Template {
     return this.getUniqueActionNames()
-      .reduce((acc, actionName: string) => {
+      .reduce((templates, actionName: string) => {
         const message = this.getMessage(actionName.slice("utter_".length)) as flow.Message;
         return {
-          ...acc,
+          ...templates,
           [actionName]: [message, ...this.gatherMessagesUpToNextIntent(message)]
-            .reduce((responses: any, response: flow.Message) => {
+            .reduce((responses: object, response: flow.Message) => {
               let key, value: string | any;
               switch (response.message_type) {
                 case "text":
@@ -220,8 +277,8 @@ ${entities.map(entity => nlu.generateEntityContent(entity)).join(EOL)}`;
       if (typeof previousMessageIds !== "undefined") {
         let messageFollowingIntent: any;
         if ((messageFollowingIntent = previousMessageIds.find(m => self.boardStructureByMessages.get(m.message_id)))) {
-          const [idOfConnectedItent] = self.boardStructureByMessages.get(messageFollowingIntent.message_id) as [string];
-          const { name: nameOfIntent } = self.getIntent(idOfConnectedItent) as flow.Intent;
+          const [idOfConnectedIntent] = self.boardStructureByMessages.get(messageFollowingIntent.message_id) as [string];
+          const { name: nameOfIntent } = self.getIntent(idOfConnectedIntent) || {} as flow.Intent;
           if (typeof nameOfIntent !== "undefined") {
             context.push(nameOfIntent);
           }
