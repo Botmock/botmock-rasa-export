@@ -6,56 +6,10 @@ import { writeFile, mkdirp } from "fs-extra";
 // @ts-ignore
 import { default as snakeCase } from "to-snake-case";
 import { join } from "path";
+import { v4 } from "uuid";
 import { EOL } from "os";
 import * as nlu from "./nlu";
-import { Intent } from "@botmock-api/flow";
-import { v4 } from "uuid";
-
-namespace Rasa {
-  export enum SlotTypes {
-    text = "text",
-  }
-  export type Template = { [actionName: string]: { [type: string]: any; }; };
-  export enum TemplateTypes {
-    TEXT = "text",
-    IMAGE = "image",
-    BUTTONS = "buttons",
-  }
-}
-
-namespace Botmock {
-  export interface Message {
-    message_id: string;
-    message_type: string;
-    previous_message_ids: any[];
-    next_message_ids: any[];
-    is_root: boolean;
-    payload: Partial<{
-      workflow_index: number;
-      nodeName: string;
-      context: [];
-      elements: [];
-      text: string;
-      quick_replies: any[];
-      buttons: any[];
-      selectedResult: any;
-      image_url: string;
-    }>;
-  };
-  export enum JumpTypes {
-    node = "node",
-    project = "project",
-  }
-  export enum MessageTypes {
-    GENERIC = "generic",
-    DELAY = "delay",
-    JUMP = "jump",
-    WEBVIEW = "webview",
-    IMAGE = "image",
-    BUTTON = "button",
-    QUICK_REPLIES = "quick_replies",
-  }
-}
+import { Botmock, Rasa } from "./types";
 
 export type ProjectData<T> = T extends Promise<infer K> ? K : any;
 
@@ -317,7 +271,7 @@ ${entities.map(entity => nlu.generateEntityContent(entity)).join(EOL)}`;
         const paths: string[] = lineage
           .filter((intentName: string) => typeof this.projectData.intents.find(intent => intent.name === intentName) !== "undefined")
           .map((intentName: string): string => {
-            const { id: idOfIntent } = this.projectData.intents.find(intent => intent.name === intentName) as Intent;
+            const { id: idOfIntent } = this.projectData.intents.find(intent => intent.name === intentName) as flow.Intent;
             const [firstRequiredSlot] = requirements.get(idOfIntent) as any;
             let slot: string = "";
             if (firstRequiredSlot) {
