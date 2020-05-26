@@ -248,8 +248,7 @@ export default class FileWriter extends flow.AbstractProject {
   private generateNLUFileContent(): string {
     const { intents, entities } = this.projectData;
     return `${intents.map((intent: flow.Intent, i: number) => {
-      // @ts-ignore
-      const { id, name: intentName, utterances: examples } = intent;
+      const { name: intentName, utterances: examples } = intent;
       return `${i !== 0 ? EOL : ""}<!-- ${new Date().toISOString()} -->
 ## intent:${this.sanitizeIntentName(intentName)}
 ${examples.map((example: any) => nlu.generateExampleContent(example, entities)).join(EOL)}`;
@@ -296,10 +295,11 @@ ${entities.map(entity => nlu.generateEntityContent(entity)).join(EOL)}`;
   }
   /**
    * Writes stories markdown file. Each story is a possible path of intents that
-   * leads to a message that is directly connected by an intent. In Rasa's language
-   * these are "paths"; each intent in a path is part of the lineage of intents
-   * leading to the particular message that follows from an intent; each action
-   * is a content block in the relevant group between the intents.
+   * leads to a message that is directly connected by an intent.
+   *
+   * In Rasa's language these are "paths"; each intent in a path is part of the
+   * lineage of intents leading to the particular message that follows from an intent;
+   * each action is a content block in the relevant group between the intents.
    */
   private async writeStoriesFile(): Promise<void> {
     const data = Array.from(this.boardStructureByMessages.keys())
@@ -372,7 +372,9 @@ ${entities.map(entity => nlu.generateEntityContent(entity)).join(EOL)}`;
     const outputFilePath = join(this.outputDir, "domain.yml");
     const firstLine = `# ${new Date().toISOString()}`;
     const data: any = {
-      intents: this.projectData.intents.map(intent => this.sanitizeIntentName(intent.name)),
+      intents: this.projectData.intents
+        .map(intent => this.sanitizeIntentName(intent.name))
+        .concat(this.welcomeIntent ? [this.sanitizeIntentName(this.welcomeIntent.name)] : []),
       entities: this.projectData.variables.map(variable => variable.name.replace(/\s/, "")),
       actions: this.getUniqueActionNames(),
       templates: this.getTemplates(),
