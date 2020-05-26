@@ -10,22 +10,37 @@ import { v4 } from "uuid";
 import { EOL } from "os";
 import * as nlu from "./nlu";
 import { Botmock, Rasa } from "./types";
+import { default as PathGen } from "./path-gen";
 
 export type ProjectData<T> = T extends Promise<infer K> ? K : any;
 
-interface IConfig {
+interface Conf {
   readonly outputDir: string;
   readonly projectData: unknown;
 }
 
 export default class FileWriter extends flow.AbstractProject {
+  #layout!: flow.Message[];
+  static instance: FileWriter;
   private welcomeIntent!: flow.Intent;
   private outputDir: string;
   private boardStructureByMessages: flow.SegmentizedStructure;
   private stories: { [intentName: string]: string[]; };
-  private static instance: FileWriter;
-  private constructor(config: IConfig) {
+  /**
+   * Bootstraps instance, creating a welcome intent if none is found between the
+   * root node and the first non-root node.
+   * @param config {@link Config} object.
+   */
+  private constructor(config: Conf) {
     super({ projectData: config.projectData as ProjectData<typeof config.projectData> });
+
+    const pathGen = new PathGen({
+      blocks: this.projectData.board.board.messages,
+      intents: this.projectData.intents,
+    });
+    this.#layout = pathGen.getUniquePaths({ groupUnderIntents: true });
+
+
     this.outputDir = config.outputDir;
     this.boardStructureByMessages = this.segmentizeBoardFromMessages();
     for (const message of this.projectData.board.board.messages) {
@@ -62,7 +77,7 @@ export default class FileWriter extends flow.AbstractProject {
    * Get singleton class
    * @returns only existing instance of the class
    */
-  public static getInstance(config: IConfig): FileWriter {
+  public static getInstance(config: Conf): FileWriter {
     if (!FileWriter.instance) {
       FileWriter.instance = new FileWriter(config);
     }
@@ -262,8 +277,7 @@ ${entities.map(entity => nlu.generateEntityContent(entity)).join(EOL)}`;
         const lineage: string[] = [
           ...this.getIntentLineageForMessage(idOfMessageConnectedByIntent),
           ...idsOfConnectedIntents.map((intentId: string) => {
-            // @ts-ignore
-            const { name } = this.getIntent(intentId) ?? {};
+            const { name } = this.getIntent(intentId) ?? {} as any;
             return name;
           }),
         ];
