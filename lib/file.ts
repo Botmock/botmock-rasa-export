@@ -1,6 +1,6 @@
 import uuid from "uuid/v4";
 import * as flow from "@botmock-api/flow";
-import { wrapEntitiesWithChar } from "@botmock-api/text";
+// import { wrapEntitiesWithChar } from "@botmock-api/text";
 import { stringify as toYAML } from "yaml";
 import { writeFile, mkdirp } from "fs-extra";
 // @ts-ignore
@@ -14,7 +14,12 @@ namespace Rasa {
   export enum SlotTypes {
     text = "text",
   }
-  export type Response = { [actionName: string]: { [type: string]: any; }; };
+  export type Template = { [actionName: string]: { [type: string]: any; }; };
+  export enum TemplateTypes {
+    TEXT = "text",
+    IMAGE = "image",
+    BUTTONS = "buttons",
+  }
 }
 
 namespace Botmock {
@@ -109,87 +114,49 @@ export default class FileWriter extends flow.AbstractProject {
    * Creates object describing responses for the project
    * @returns nested object containing content block data
    */
-  private getResponses(): Rasa.Response {
-    const ACTION_PREFIX_LENGTH = 6;
+  private getTemplates(): Rasa.Template {
     return this.getUniqueActionNames()
       .reduce((acc, actionName: string) => {
-        const message = this.getMessage(actionName.slice(ACTION_PREFIX_LENGTH)) as flow.Message;
+        const message = this.getMessage(actionName.slice("utter_".length)) as flow.Message;
         return {
           ...acc,
           [actionName]: [message, ...this.gatherMessagesUpToNextIntent(message)]
-            .reduce((accu: any, message: flow.Message) => {
-              let payload: string | {} | void = {};
-              switch (message.message_type) {
-                case Botmock.MessageTypes.GENERIC:
-                  payload = {
-                    text: message.payload?.text,
-                    buttons: message.payload?.elements?.reduce((acc: any, element: any) => {
-                      const buttons: any[] = Array.isArray(element.buttons) ? element.buttons : Array.of(element.buttons);
-                      return [
-                        ...acc,
-                        ...buttons.reduce((accu, button) => {
-                          return [
-                            ...accu,
-                            {
-                              title: button.title,
-                              payload: button.payload,
-                            },
-                          ];
-                        }, []),
-                      ];
-                    }, []),
-                  };
+            .reduce((responses: any, response: flow.Message) => {
+              let key, value: string | any;
+              switch (response.message_type) {
+                case "text":
+                  [key, value] = [Rasa.TemplateTypes.TEXT, response.payload?.text as string];
                   break;
-                case Botmock.MessageTypes.DELAY:
-                  // @ts-ignore
-                  payload = { text: `waiting for ${message.payload?.show_for} ms` };
+                case "image":
+                  [key, value] = [Rasa.TemplateTypes.IMAGE, response.payload?.image_url as string];
                   break;
-                case Botmock.MessageTypes.JUMP:
-                  let label;
-                  let jumpType;
-                  try {
-                    const json = JSON.parse(message.payload?.selectedResult);
-                    label = json.label;
-                    jumpType = json.jumpType;
-                  } catch (_) {
-                    break;
-                  }
-                  switch (jumpType) {
-                    case Botmock.JumpTypes.node:
-                      payload = { text: `jumped to block ${label}` };
-                      break;
-                    case Botmock.JumpTypes.project:
-                      payload = { text: `jumped to project ${label}` };
-                      break;
-                  }
+                case "button":
+                  [key, value] = [
+                    Rasa.TemplateTypes.BUTTONS,
+                    response.payload?.buttons?.map(button => ({
+                      title: button.title,
+                      payload: button.title.trim(),
+                    })) as object[],
+                  ];
                   break;
-                case Botmock.MessageTypes.WEBVIEW:
-                case Botmock.MessageTypes.IMAGE:
-                  const imageKeyName = message.message_type === "webview" ? "image" : "image_url";
-                  const data: any = { image: (message.payload as any)[imageKeyName] };
-                  if (message.payload?.text) {
-                    data.text = message.payload?.text;
-                  }
-                  payload = data;
-                  break;
-                case Botmock.MessageTypes.BUTTON:
-                case Botmock.MessageTypes.QUICK_REPLIES:
-                  const key = message.payload?.hasOwnProperty("buttons") ? "buttons" : "quick_replies";
-                  const buttons = (message.payload as any)[key].map(({ title, payload }: any) => ({ buttons: { title, payload } }));
-                  payload = [{ text: message.payload?.text }].concat(...buttons);
+                case "quick_replies":
+                  [key, value] = [
+                    Rasa.TemplateTypes.BUTTONS,
+                    response.payload?.quick_replies?.map(reply => ({
+                      title: reply.title,
+                      payload: reply.title.trim(),
+                    })) as object[],
+                  ];
                   break;
                 default:
-                  const text = typeof message.payload?.text !== "undefined"
-                    ? wrapEntitiesWithChar(message.payload?.text as string, "{")
-                    : JSON.stringify(message.payload);
-                  payload = { text };
+                  [key, value] = [Rasa.TemplateTypes.TEXT, response.payload?.nodeName as string];
                   break;
               }
-              return [
-                ...accu,
-                ...Array.isArray(payload) ? payload : Array.of(payload)
-              ];
-            }, [])
+              return {
+                ...responses,
+                [key]: value,
+              };
+            }, {})
         };
       }, {});
   }
@@ -351,7 +318,7 @@ ${entities.map(entity => nlu.generateEntityContent(entity)).join(EOL)}`;
       intents: this.projectData.intents.map(intent => this.sanitizeIntentName(intent.name)),
       entities: this.projectData.variables.map(variable => variable.name.replace(/\s/, "")),
       actions: this.getUniqueActionNames(),
-      responses: this.getResponses(),
+      templates: this.getTemplates(),
     };
     let serialData: string = toYAML(data);
     const requiredSlots = this.representRequiredSlots();
