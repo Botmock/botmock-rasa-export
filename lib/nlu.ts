@@ -11,10 +11,8 @@ export function generateExampleContent(utterance: flow.Utterance, entities: flow
   let str: string = text;
   if (variables) {
     variables.forEach(({ name, entity: variableId }: Partial<flow.Variable>) => {
-      // @ts-ignore
-      let search = new RegExp(name, "gi");
-      // @ts-ignore
-      const formattedName = name
+      let search = new RegExp(name as string, "gi");
+      const formattedName = (name as string)
         .replace(/%/g, "")
         .replace(/ /g, "_")
         .toLowerCase();
