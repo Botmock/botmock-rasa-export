@@ -10,7 +10,7 @@ import { v4 } from "uuid";
 import { EOL } from "os";
 import * as nlu from "./nlu";
 import { Botmock, Rasa } from "./types";
-import { default as PathGen } from "./path-gen";
+// import { default as PathGen } from "./path-gen";
 
 export type ProjectData<T> = T extends Promise<infer K> ? K : any;
 
@@ -20,7 +20,7 @@ interface Conf {
 }
 
 export default class FileWriter extends flow.AbstractProject {
-  #layout!: flow.Message[];
+  // #layout!: flow.Message[][];
   static instance: FileWriter;
   private welcomeIntent!: flow.Intent;
   private outputDir: string;
@@ -34,15 +34,16 @@ export default class FileWriter extends flow.AbstractProject {
   private constructor(config: Conf) {
     super({ projectData: config.projectData as ProjectData<typeof config.projectData> });
 
-    const pathGen = new PathGen({
-      blocks: this.projectData.board.board.messages,
-      intents: this.projectData.intents,
-    });
-    this.#layout = pathGen.getUniquePaths({ groupUnderIntents: true });
-
+    // const pathGen = new PathGen({
+    //   blocks: this.projectData.board.board.messages,
+    //   intents: this.projectData.intents,
+    // });
+    // this.#layout = pathGen.getUniquePaths({ groupUnderIntents: true });
 
     this.outputDir = config.outputDir;
     this.boardStructureByMessages = this.segmentizeBoardFromMessages();
+
+
     for (const message of this.projectData.board.board.messages) {
       const [rootParentId] = message.previous_message_ids?.filter(previous => {
         const previousMessage = this.getMessage(previous.message_id) as Botmock.Message;
@@ -272,10 +273,10 @@ ${entities.map(entity => nlu.generateEntityContent(entity)).join(EOL)}`;
    */
   private async writeStoriesFile(): Promise<void> {
     const data = Array.from(this.boardStructureByMessages.keys())
-      .reduce((acc, idOfMessageConnectedByIntent: string) => {
-        const idsOfConnectedIntents = this.boardStructureByMessages.get(idOfMessageConnectedByIntent) as any[];
+      .reduce((stories, messageId: string) => {
+        const idsOfConnectedIntents = this.boardStructureByMessages.get(messageId) as any[];
         const lineage: string[] = [
-          ...this.getIntentLineageForMessage(idOfMessageConnectedByIntent),
+          ...this.getIntentLineageForMessage(messageId),
           ...idsOfConnectedIntents.map((intentId: string) => {
             const { name } = this.getIntent(intentId) ?? {} as any;
             return name;
@@ -299,7 +300,7 @@ ${entities.map(entity => nlu.generateEntityContent(entity)).join(EOL)}`;
           });
         const story = uuid();
         const storyName = `## ${story}`;
-        return acc + EOL + storyName + EOL + paths.join(EOL) + EOL;
+        return stories + EOL + storyName + EOL + paths.join(EOL) + EOL;
       }, `<!-- ${new Date().toISOString()} -->`);
     await writeFile(join(this.outputDir, "data", "stories.md"), data);
   }
