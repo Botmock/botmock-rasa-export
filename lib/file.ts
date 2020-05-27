@@ -19,15 +19,15 @@ interface Conf {
 }
 
 export default class FileWriter extends flow.AbstractProject {
-  // #paths!: flow.Message[][];
   static instance: FileWriter;
   private welcomeIntent!: flow.Intent;
   private outputDir: string;
-  private stories: { [intentName: string]: string[]; };
+  private stories: Set<string>;
 
   #boardMap: Map<string, string[]> = new Map();
+
   /**
-   * Sets private field to contain map of: message id -> intent ids connected to it
+   * Sets private field to contain map of: message id -> intent ids connected to it.
    * @param messages Array of {@link Message}
    */
   #buildBoardMap = (messages: flow.Message[]): void => {
@@ -88,9 +88,7 @@ export default class FileWriter extends flow.AbstractProject {
         }
       }
     }
-    // console.log(this.#boardMap);
-
-    this.stories = this.createStoriesFromIntentStructure(this.#boardMap);
+    this.stories = this.#buildUniqueMessageIds();
   }
   /**
    * Get singleton class
@@ -107,103 +105,72 @@ export default class FileWriter extends flow.AbstractProject {
    * @returns unique action names
    */
   private getUniqueActionNames(): ReadonlyArray<string> {
-    return Object.keys(
-      Object.values(this.stories)
-        .reduce((actions, values: string[]) => {
-          return {
-            ...actions,
-            ...values.reduce((innerActions, value) => ({
-              ...innerActions,
-              [value]: void 0,
-            }), {})
-          };
-        }, {}))
+    return Array.from([...this.stories])
       .map(action => `utter_${action}`);
   }
   /**
-   * Creates object of intent names -> blocks they are connected to.
-   * @returns stories as an object
+   * Builds set of "leading" message ids
+   * @returns Set of unique messages ids
    */
-  private createStoriesFromIntentStructure(boardStructure: Map<string, string[]>): { [intentName: string]: string[]; } {
-    const { intents } = this.projectData;
-    type Entry = [string, string[]];
-    return Array.from(boardStructure)
-      .reduce((connections, [messageId, connectedIntentIds]: Entry) => ({
-        ...connections,
-        ...connectedIntentIds.reduce((innerConnectedIntents, id: string) => {
-          const message = this.getMessage(messageId) as Botmock.Message;
-          const intent = intents.find(intent => intent.id === id) as flow.Intent;
-          if (typeof intent !== "undefined") {
-            return {
-              ...innerConnectedIntents,
-              [intent.name]: [
-                message,
-                ...this.gatherMessagesUpToNextIntent(message as Botmock.Message)
-              ].map(message => message.message_id)
-            };
-          } else if (message.is_root) {
-            return {
-              ...innerConnectedIntents,
-              [this.welcomeIntent.name]: [
-                message,
-                ...this.gatherMessagesUpToNextIntent(message as Botmock.Message)
-              ].map(message => message.message_id),
-            };
-          } else {
-            return innerConnectedIntents;
-          }
-        }, {})
-      }), {});
-  }
+  #buildUniqueMessageIds = (): Set<string> => {
+    return new Set([...this.#boardMap.keys()]);
+  };
   /**
    * Creates object describing responses for the project
    * @returns nested object containing content block data
    */
   private getTemplates(): Rasa.Template {
-    return this.getUniqueActionNames()
-      .reduce((templates, actionName: string) => {
-        const message = this.getMessage(actionName.slice("utter_".length)) as flow.Message;
-        return {
-          ...templates,
-          [actionName]: [message, ...this.gatherMessagesUpToNextIntent(message)]
-            .reduce((responses: object, response: flow.Message) => {
-              let key, value: string | any;
-              switch (response.message_type) {
-                case "text":
-                  [key, value] = [Rasa.TemplateTypes.TEXT, response.payload?.text as string];
-                  break;
-                case "image":
-                  [key, value] = [Rasa.TemplateTypes.IMAGE, response.payload?.image_url as string];
-                  break;
-                case "button":
-                  [key, value] = [
-                    Rasa.TemplateTypes.BUTTONS,
-                    response.payload?.buttons?.map(button => ({
-                      title: button.title,
-                      payload: button.title.trim(),
-                    })) as object[],
-                  ];
-                  break;
-                case "quick_replies":
-                  [key, value] = [
-                    Rasa.TemplateTypes.BUTTONS,
-                    response.payload?.quick_replies?.map(reply => ({
-                      title: reply.title,
-                      payload: reply.title.trim(),
-                    })) as object[],
-                  ];
-                  break;
-                default:
-                  [key, value] = [Rasa.TemplateTypes.TEXT, response.payload?.nodeName as string];
-                  break;
-              }
-              return {
-                ...responses,
-                [key]: value,
-              };
-            }, {})
-        };
-      }, {});
+    return this.getUniqueActionNames().reduce((templates, leadingMessageId: string) => {
+      const message = this.getMessage(leadingMessageId.slice("utter_".length)) as flow.Message;
+      return {
+        ...templates,
+        [leadingMessageId]: [message, ...this.gatherMessagesUpToNextIntent(message)]
+          .reduce((responses: object, response: flow.Message) => {
+            let key, value: string | any;
+            let impliedObject: { [key: string]: any; } = {};
+            switch (response.message_type) {
+              case "text":
+                [key, value] = [Rasa.TemplateTypes.TEXT, response.payload?.text as string];
+                break;
+              case "image":
+                [key, value] = [Rasa.TemplateTypes.IMAGE, response.payload?.image_url as string];
+                break;
+              case "button":
+                if (response.payload?.text) {
+                  impliedObject[Rasa.TemplateTypes.TEXT] = response.payload.text;
+                }
+                [key, value] = [
+                  Rasa.TemplateTypes.BUTTONS,
+                  response.payload?.buttons?.map(button => ({
+                    title: button.title,
+                    payload: button.title.trim(),
+                  })) as object[],
+                ];
+                break;
+              case "quick_replies":
+                if (response.payload?.text) {
+                  impliedObject[Rasa.TemplateTypes.TEXT] = response.payload.text;
+                }
+                [key, value] = [
+                  Rasa.TemplateTypes.BUTTONS,
+                  response.payload?.quick_replies?.map(reply => ({
+                    title: reply.title,
+                    payload: reply.title.trim(),
+                  })) as object[],
+                ];
+                break;
+              default:
+                [key, value] = [Rasa.TemplateTypes.TEXT, response.payload?.nodeName as string];
+                break;
+            }
+            return {
+              ...responses,
+              ...impliedObject,
+              [key]: value,
+            };
+          }, {})
+      };
+    }, {});
   }
   /**
    * Represent all required slots as an array of objects able to be consumed as yml
@@ -234,14 +201,13 @@ export default class FileWriter extends flow.AbstractProject {
    * @returns file contents as a string
    */
   private generateNLUFileContent(): string {
-    const { intents, entities } = this.projectData;
-    return `${intents.map((intent: flow.Intent, i: number) => {
+    return `${this.projectData.intents.concat([this.welcomeIntent] ?? []).map((intent: flow.Intent, i: number) => {
       const { name: intentName, utterances: examples } = intent;
       return `${i !== 0 ? EOL : ""}<!-- ${new Date().toISOString()} -->
 ## intent:${this.sanitizeIntentName(intentName)}
-${examples.map((example: any) => nlu.generateExampleContent(example, entities)).join(EOL)}`;
+${examples.map((example: any) => nlu.generateExampleContent(example, this.projectData.entities)).join(EOL)}`;
     }).join(EOL)}
-${entities.map(entity => nlu.generateEntityContent(entity)).join(EOL)}`;
+${this.projectData.entities.map(entity => nlu.generateEntityContent(entity)).join(EOL)}`;
   }
   /**
    * Writes intent markdown file
@@ -284,6 +250,7 @@ ${entities.map(entity => nlu.generateEntityContent(entity)).join(EOL)}`;
   /**
    * Writes stories markdown file. Each story is a possible path of intents that
    * leads to a message that is directly connected by an intent.
+   * @todo
    */
   private async writeStoriesFile(): Promise<void> {
     const requirements = this.representRequirementsForIntents();
@@ -307,7 +274,7 @@ ${entities.map(entity => nlu.generateEntityContent(entity)).join(EOL)}`;
               const variable = this.projectData.variables.find(variable => variable.id === firstRequiredSlot.variable_id);
               slot = `{"${variable?.name}": "${variable?.default_value}"}`;
             }
-            const actionsUnderIntent = this.stories[intentName].map((actionName: string) => (
+            const actionsUnderIntent = [].map((actionName: string) => (
               `  - utter_${actionName}`
             )).concat(slot ? `  - slot${slot}` : []).join(EOL);
             return `* ${this.sanitizeIntentName(intentName)}${slot}${EOL}${actionsUnderIntent}`;
