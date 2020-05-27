@@ -30,15 +30,27 @@ export default class PathGen implements PathParser {
    */
   #collect = () => { };
   /**
-   * Generator that completes once the number of next messages are 0 or > 1.
+   * Root-most block coming from intent ->
+   *
+   * Generator that yields a segment of blocks (messages) contained in a deterministic path.
+   * @param block
+   * @param blocks
    * @yields Array of {@link flow.Message} contained in the segment.
    */
-  #biasedTraversal = function* f(message: flow.Message): IterableIterator<Segment | void> {
-    let segment: Segment = [message];
-    let endOfPath: Segment = segment;
-    if (message.next_message_ids?.length === 1) {
-      // const nextMessage = this.#blocks.find()
-      // yield* f(nextMessage)
+  #biasedTreeBuilder = function* f(block: flow.Message, blocks: flow.Message[]): IterableIterator<Segment | void> {
+    // let segment: Segment = [block];
+    // let endOfPath: Segment = segment;
+    // When there is a single upcoming message
+    if (block.next_message_ids?.length === 1) {
+      const nextMessage = blocks.find(b => b.message_id === (block.next_message_ids as any)[0].message_id);
+      if (typeof nextMessage !== "undefined") {
+        yield [];
+      }
+      // @ts-ignore
+    } else if (block.next_message_ids?.length > 1) {
+      // for (const next of block?.next_message_ids) {
+      //   yield* f(nextMessage, blocks);
+      // }
     }
   };
   /**
@@ -49,10 +61,10 @@ export default class PathGen implements PathParser {
     if (!options.groupUnderIntents) {
       throw "unimplemented";
     }
-    let generator = this.#biasedTraversal(this.#root);
+    const builder = this.#biasedTreeBuilder(this.#root, this.#blocks);
     let segment: IteratorResult<Segment | void>;
     let paths: Segment[] = [];
-    while (segment = generator.next()) {
+    while (segment = builder.next()) {
       if (segment.done) {
         break;
       }

@@ -10,7 +10,6 @@ import { v4 } from "uuid";
 import { EOL } from "os";
 import * as nlu from "./nlu";
 import { Botmock, Rasa } from "./types";
-// import { default as PathGen } from "./path-gen";
 
 export type ProjectData<T> = T extends Promise<infer K> ? K : any;
 
@@ -20,12 +19,36 @@ interface Conf {
 }
 
 export default class FileWriter extends flow.AbstractProject {
-  // #layout!: flow.Message[][];
+  // #paths!: flow.Message[][];
   static instance: FileWriter;
   private welcomeIntent!: flow.Intent;
   private outputDir: string;
-  private boardStructureByMessages: flow.SegmentizedStructure;
   private stories: { [intentName: string]: string[]; };
+
+  #boardMap: Map<string, string[]> = new Map();
+  /**
+   * Sets private field to contain map of: message id -> intent ids connected to it
+   * @param messages Array of {@link Message}
+   */
+  #buildBoardMap = (messages: flow.Message[]): void => {
+    for (const m of messages) {
+      for (const { message_id, intent } of m.next_message_ids ?? []) {
+        if (intent && intent !== "") {
+          if (this.#boardMap.has(message_id)) {
+            const intentsDiscoveredForMessageId = [...this.#boardMap.get(message_id) ?? []];
+            let incomingValue: string[] = [];
+            if (!intentsDiscoveredForMessageId.includes((intent as any).value)) {
+              incomingValue = (intent as any).value;
+            }
+            this.#boardMap.delete(message_id);
+            this.#boardMap.set(message_id, [...intentsDiscoveredForMessageId, ...incomingValue]);
+          } else {
+            this.#boardMap.set(message_id, [(intent as any).value]);
+          }
+        }
+      }
+    }
+  };
   /**
    * Bootstraps instance, creating a welcome intent if none is found between the
    * root node and the first non-root node.
@@ -34,15 +57,8 @@ export default class FileWriter extends flow.AbstractProject {
   private constructor(config: Conf) {
     super({ projectData: config.projectData as ProjectData<typeof config.projectData> });
 
-    // const pathGen = new PathGen({
-    //   blocks: this.projectData.board.board.messages,
-    //   intents: this.projectData.intents,
-    // });
-    // this.#layout = pathGen.getUniquePaths({ groupUnderIntents: true });
-
     this.outputDir = config.outputDir;
-    this.boardStructureByMessages = this.segmentizeBoardFromMessages();
-
+    this.#buildBoardMap(this.projectData.board.board.messages);
 
     for (const message of this.projectData.board.board.messages) {
       const [rootParentId] = message.previous_message_ids?.filter(previous => {
@@ -50,7 +66,7 @@ export default class FileWriter extends flow.AbstractProject {
         return previousMessage.is_root;
       }).map(previous => previous.message_id) as any[];
       if (rootParentId) {
-        if (!this.boardStructureByMessages.get(rootParentId)) {
+        if (!this.#boardMap.get(rootParentId)) {
           this.welcomeIntent = {
             id: v4(),
             name: "welcome",
@@ -68,11 +84,13 @@ export default class FileWriter extends flow.AbstractProject {
             is_global: false,
             slots: null,
           } as flow.Intent;
-          this.boardStructureByMessages.set(rootParentId, [this.welcomeIntent.id]);
+          this.#boardMap.set(rootParentId, [this.welcomeIntent.id]);
         }
       }
     }
-    this.stories = this.createStoriesFromIntentStructure(this.boardStructureByMessages);
+    // console.log(this.#boardMap);
+
+    this.stories = this.createStoriesFromIntentStructure(this.#boardMap);
   }
   /**
    * Get singleton class
@@ -245,8 +263,8 @@ ${entities.map(entity => nlu.generateEntityContent(entity)).join(EOL)}`;
       const { previous_message_ids: previousMessageIds } = self.getMessage(messageId) as flow.Message;
       if (typeof previousMessageIds !== "undefined") {
         let messageFollowingIntent: any;
-        if ((messageFollowingIntent = previousMessageIds.find(m => self.boardStructureByMessages.get(m.message_id)))) {
-          const [idOfConnectedIntent] = self.boardStructureByMessages.get(messageFollowingIntent.message_id) as [string];
+        if ((messageFollowingIntent = previousMessageIds.find(m => self.#boardMap.get(m.message_id)))) {
+          const [idOfConnectedIntent] = self.#boardMap.get(messageFollowingIntent.message_id) as [string];
           const { name: nameOfIntent } = self.getIntent(idOfConnectedIntent) || {} as flow.Intent;
           if (typeof nameOfIntent !== "undefined") {
             context.push(nameOfIntent);
@@ -266,23 +284,19 @@ ${entities.map(entity => nlu.generateEntityContent(entity)).join(EOL)}`;
   /**
    * Writes stories markdown file. Each story is a possible path of intents that
    * leads to a message that is directly connected by an intent.
-   *
-   * In Rasa's language these are "paths"; each intent in a path is part of the
-   * lineage of intents leading to the particular message that follows from an intent;
-   * each action is a content block in the relevant group between the intents.
    */
   private async writeStoriesFile(): Promise<void> {
-    const data = Array.from(this.boardStructureByMessages.keys())
+    const requirements = this.representRequirementsForIntents();
+    const data = Array.from(this.#boardMap.keys())
       .reduce((stories, messageId: string) => {
-        const idsOfConnectedIntents = this.boardStructureByMessages.get(messageId) as any[];
+        const intentIds = this.#boardMap.get(messageId) as any[];
         const lineage: string[] = [
           ...this.getIntentLineageForMessage(messageId),
-          ...idsOfConnectedIntents.map((intentId: string) => {
+          ...intentIds.map((intentId: string) => {
             const { name } = this.getIntent(intentId) ?? {} as any;
             return name;
           }),
         ];
-        const requirements = this.representRequirementsForIntents();
         const paths: string[] = lineage
           .filter((intentName: string) => typeof this.projectData.intents.find(intent => intent.name === intentName) !== "undefined")
           .map((intentName: string): string => {
