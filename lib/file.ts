@@ -20,8 +20,8 @@ interface Conf {
 
 export default class FileWriter extends flow.AbstractProject {
   static instance: FileWriter;
-  private welcomeIntent!: flow.Intent;
   private outputDir: string;
+  #welcomeIntent!: flow.Intent;
 
   #actionNames: ReadonlyArray<string>;
   #stories: Set<string>;
@@ -68,7 +68,7 @@ export default class FileWriter extends flow.AbstractProject {
       }).map(previous => previous.message_id) as any[];
       if (rootParentId) {
         if (!this.#boardMap.get(rootParentId)) {
-          this.welcomeIntent = {
+          this.#welcomeIntent = {
             id: v4(),
             name: "welcome",
             utterances: [{ text: "hi", variables: [] }],
@@ -85,7 +85,7 @@ export default class FileWriter extends flow.AbstractProject {
             is_global: false,
             slots: null,
           } as flow.Intent;
-          this.#boardMap.set(rootParentId, [this.welcomeIntent.id]);
+          this.#boardMap.set(rootParentId, [this.#welcomeIntent.id]);
         }
       }
     }
@@ -107,7 +107,7 @@ export default class FileWriter extends flow.AbstractProject {
    * @returns Unique action names
    */
   #getUniqueActionNames = (): ReadonlyArray<string> => {
-    return Array.from([...this.#stories]).map(name => `utter_${name}`);
+    return Array.from([...this.#stories]).map(id => `utter_${id}`);
   };
   /**
    * Builds set of "leading" message ids.
@@ -202,7 +202,7 @@ export default class FileWriter extends flow.AbstractProject {
    * @returns file contents as a string
    */
   private generateNLUFileContent(): string {
-    return `${this.projectData.intents.concat([this.welcomeIntent] ?? []).map((intent: flow.Intent, i: number) => {
+    return `${this.projectData.intents.concat([this.#welcomeIntent] ?? []).map((intent: flow.Intent, i: number) => {
       const { name: intentName, utterances: examples } = intent;
       return `${i !== 0 ? EOL : ""}<!-- ${new Date().toISOString()} -->
 ## intent:${this.sanitizeIntentName(intentName)}
@@ -226,9 +226,12 @@ ${this.projectData.entities.map(entity => nlu.generateEntityContent(entity)).joi
   #createStories = (): string => {
     let string = `## story + greedy path`;
     for (const [id, [firstIntentId]] of this.#boardMap.entries()) {
-      const intent = this.getIntent(firstIntentId) as flow.Intent;
-      const actionsOnIntentAtLocationInFlow = ``;
-      string += `* ${intent.name}${EOL}${actionsOnIntentAtLocationInFlow}`;
+      let intent = this.getIntent(firstIntentId);
+      if (typeof intent === "undefined") {
+        continue;
+      }
+      const actionsOnIntentAtLocationInFlow = `  - ${this.#actionNames.find(name => name.endsWith(id))}`;
+      string += `${EOL}* ${intent.name}${EOL}${actionsOnIntentAtLocationInFlow}`;
     }
     return string;
   };
@@ -278,7 +281,7 @@ ${this.projectData.entities.map(entity => nlu.generateEntityContent(entity)).joi
     const data: any = {
       intents: this.projectData.intents
         .map(intent => this.sanitizeIntentName(intent.name))
-        .concat(this.welcomeIntent ? [this.sanitizeIntentName(this.welcomeIntent.name)] : []),
+        .concat(this.#welcomeIntent ? [this.sanitizeIntentName(this.#welcomeIntent.name)] : []),
       entities: this.projectData.variables.map(variable => variable.name.replace(/\s/, "")),
       actions: this.#actionNames,
       templates: this.getTemplates(),
