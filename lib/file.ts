@@ -59,7 +59,7 @@ export default class FileWriter extends flow.AbstractProject {
     super({ projectData: config.projectData as ProjectData<typeof config.projectData> });
 
     this.outputDir = config.outputDir;
-    this.#buildBoardMap(this.projectData.board.board.messages);
+    this.#buildBoardMap(this.topoSort());
 
     for (const message of this.projectData.board.board.messages) {
       const [rootParentId] = message.previous_message_ids?.filter(previous => {
