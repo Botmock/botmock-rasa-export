@@ -1,6 +1,5 @@
 import uuid from "uuid/v4";
 import * as flow from "@botmock-api/flow";
-// import { wrapEntitiesWithChar } from "@botmock-api/text";
 import { stringify as toYAML } from "yaml";
 import { writeFile, mkdirp } from "fs-extra";
 // @ts-ignore
@@ -8,6 +7,7 @@ import { default as snakeCase } from "to-snake-case";
 import { join } from "path";
 import { v4 } from "uuid";
 import { EOL } from "os";
+
 import * as nlu from "./nlu";
 import { Botmock, Rasa } from "./types";
 
@@ -22,8 +22,8 @@ export default class FileWriter extends flow.AbstractProject {
   static instance: FileWriter;
   private welcomeIntent!: flow.Intent;
   private outputDir: string;
-  private stories: Set<string>;
 
+  #stories: Set<string>;
   #boardMap: Map<string, string[]> = new Map();
 
   /**
@@ -88,7 +88,7 @@ export default class FileWriter extends flow.AbstractProject {
         }
       }
     }
-    this.stories = this.#buildUniqueMessageIds();
+    this.#stories = this.#buildUniqueMessageIds();
   }
   /**
    * Get singleton class
@@ -105,7 +105,7 @@ export default class FileWriter extends flow.AbstractProject {
    * @returns unique action names
    */
   private getUniqueActionNames(): ReadonlyArray<string> {
-    return Array.from([...this.stories])
+    return Array.from([...this.#stories])
       .map(action => `utter_${action}`);
   }
   /**
@@ -248,42 +248,20 @@ ${this.projectData.entities.map(entity => nlu.generateEntityContent(entity)).joi
     return context;
   }
   /**
-   * Writes stories markdown file. Each story is a possible path of intents that
-   * leads to a message that is directly connected by an intent.
+   * Creates unique intent-driven paths.
+   *
+   *
+   * @returns String
+   */
+  #createStories = (): string => {
+    return ``;
+  };
+  /**
+   * Writes `stories.md` in the correct location.
    * @todo
    */
   private async writeStoriesFile(): Promise<void> {
-    const requirements = this.representRequirementsForIntents();
-    const data = Array.from(this.#boardMap.keys())
-      .reduce((stories, messageId: string) => {
-        const intentIds = this.#boardMap.get(messageId) as any[];
-        const lineage: string[] = [
-          ...this.getIntentLineageForMessage(messageId),
-          ...intentIds.map((intentId: string) => {
-            const { name } = this.getIntent(intentId) ?? {} as any;
-            return name;
-          }),
-        ];
-        const paths: string[] = lineage
-          .filter((intentName: string) => typeof this.projectData.intents.find(intent => intent.name === intentName) !== "undefined")
-          .map((intentName: string): string => {
-            const { id: idOfIntent } = this.projectData.intents.find(intent => intent.name === intentName) as flow.Intent;
-            const [firstRequiredSlot] = requirements.get(idOfIntent) as any;
-            let slot: string = "";
-            if (firstRequiredSlot) {
-              const variable = this.projectData.variables.find(variable => variable.id === firstRequiredSlot.variable_id);
-              slot = `{"${variable?.name}": "${variable?.default_value}"}`;
-            }
-            const actionsUnderIntent = [].map((actionName: string) => (
-              `  - utter_${actionName}`
-            )).concat(slot ? `  - slot${slot}` : []).join(EOL);
-            return `* ${this.sanitizeIntentName(intentName)}${slot}${EOL}${actionsUnderIntent}`;
-          });
-        const story = uuid();
-        const storyName = `## ${story}`;
-        return stories + EOL + storyName + EOL + paths.join(EOL) + EOL;
-      }, `<!-- ${new Date().toISOString()} -->`);
-    await writeFile(join(this.outputDir, "data", "stories.md"), data);
+    await writeFile(join(this.outputDir, "data", "stories.md"), this.#createStories());
   }
   /**
    * Formats given text
@@ -314,9 +292,9 @@ ${this.projectData.entities.map(entity => nlu.generateEntityContent(entity)).joi
    * @remark Manually appends serial data with templates for the sake of having
    *         more control over final .yml format, which Rasa CLI is sensitive to.
    * @see https://rasa.com/docs/rasa/core/domains/#images-and-buttons
-   * @todo custom payloads(?) and channel-specific responses(?)
    * @see https://rasa.com/docs/rasa/core/domains/#custom-output-payloads
    * @see https://rasa.com/docs/rasa/core/domains/#channel-specific-responses
+   * @todo custom payloads(?) and channel-specific responses(?)
    */
   private async writeDomainFile(): Promise<void> {
     const outputFilePath = join(this.outputDir, "domain.yml");
