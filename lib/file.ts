@@ -1,4 +1,3 @@
-import uuid from "uuid/v4";
 import * as flow from "@botmock-api/flow";
 import { stringify as toYAML } from "yaml";
 import { writeFile, mkdirp } from "fs-extra";
