@@ -23,6 +23,7 @@ export default class FileWriter extends flow.AbstractProject {
   private welcomeIntent!: flow.Intent;
   private outputDir: string;
 
+  #actionNames: ReadonlyArray<string>;
   #stories: Set<string>;
   #boardMap: Map<string, string[]> = new Map();
 
@@ -89,10 +90,11 @@ export default class FileWriter extends flow.AbstractProject {
       }
     }
     this.#stories = this.#buildUniqueMessageIds();
+    this.#actionNames = this.#getUniqueActionNames();
   }
   /**
-   * Get singleton class
-   * @returns only existing instance of the class
+   * Get singleton class.
+   * @returns Only existing instance of the class
    */
   public static getInstance(config: Conf): FileWriter {
     if (!FileWriter.instance) {
@@ -101,15 +103,14 @@ export default class FileWriter extends flow.AbstractProject {
     return FileWriter.instance;
   }
   /**
-   * Gets array containing the unique action names in the project
-   * @returns unique action names
+   * Gets array containing the unique action names in the project.
+   * @returns Unique action names
    */
-  private getUniqueActionNames(): ReadonlyArray<string> {
-    return Array.from([...this.#stories])
-      .map(action => `utter_${action}`);
-  }
+  #getUniqueActionNames = (): ReadonlyArray<string> => {
+    return Array.from([...this.#stories]).map(name => `utter_${name}`);
+  };
   /**
-   * Builds set of "leading" message ids
+   * Builds set of "leading" message ids.
    * @returns Set of unique messages ids
    */
   #buildUniqueMessageIds = (): Set<string> => {
@@ -120,7 +121,7 @@ export default class FileWriter extends flow.AbstractProject {
    * @returns nested object containing content block data
    */
   private getTemplates(): Rasa.Template {
-    return this.getUniqueActionNames().reduce((templates, leadingMessageId: string) => {
+    return this.#actionNames.reduce((templates, leadingMessageId: string) => {
       const message = this.getMessage(leadingMessageId.slice("utter_".length)) as flow.Message;
       return {
         ...templates,
@@ -175,7 +176,7 @@ export default class FileWriter extends flow.AbstractProject {
   /**
    * Represent all required slots as an array of objects able to be consumed as yml
    */
-  private representRequiredSlots(): any[] {
+  private representRequiredSlots(): { [slotName: string]: object; }[] {
     const uniqueNamesOfRequiredSlots = Array.from(this.representRequirementsForIntents())
       .reduce((acc, pair: [string, any]) => {
         const [, requiredSlots] = pair;
@@ -210,7 +211,7 @@ ${examples.map((example: any) => nlu.generateExampleContent(example, this.projec
 ${this.projectData.entities.map(entity => nlu.generateEntityContent(entity)).join(EOL)}`;
   }
   /**
-   * Writes intent markdown file
+   * Writes intent markdown file.
    */
   private async writeIntentFile(): Promise<void> {
     const outputFilePath = join(this.outputDir, "data", "nlu.md");
@@ -218,43 +219,18 @@ ${this.projectData.entities.map(entity => nlu.generateEntityContent(entity)).joi
     await writeFile(outputFilePath, this.generateNLUFileContent());
   }
   /**
-   * Gets the lineage of intents implied by a given message id
-   * @param messageId message id of a message connected by an intent
-   */
-  private getIntentLineageForMessage(messageId: string): string[] {
-    const self = this;
-    const context: string[] = [];
-    const seenIds: string[] = [];
-    (function unwindFromMessageId(messageId: string) {
-      const { previous_message_ids: previousMessageIds } = self.getMessage(messageId) as flow.Message;
-      if (typeof previousMessageIds !== "undefined") {
-        let messageFollowingIntent: any;
-        if ((messageFollowingIntent = previousMessageIds.find(m => self.#boardMap.get(m.message_id)))) {
-          const [idOfConnectedIntent] = self.#boardMap.get(messageFollowingIntent.message_id) as [string];
-          const { name: nameOfIntent } = self.getIntent(idOfConnectedIntent) || {} as flow.Intent;
-          if (typeof nameOfIntent !== "undefined") {
-            context.push(nameOfIntent);
-          }
-        } else {
-          for (const { message_id: prevMessageId } of previousMessageIds) {
-            if (!seenIds.includes(prevMessageId)) {
-              seenIds.push(prevMessageId);
-              unwindFromMessageId(prevMessageId);
-            }
-          }
-        }
-      }
-    })(messageId);
-    return context;
-  }
-  /**
-   * Creates unique intent-driven paths.
-   *
-   *
+   * Creates unique intent-driven path.
    * @returns String
+   * @todo
    */
   #createStories = (): string => {
-    return ``;
+    let string = `## story + greedy path`;
+    for (const [id, [firstIntentId]] of this.#boardMap.entries()) {
+      const intent = this.getIntent(firstIntentId) as flow.Intent;
+      const actionsOnIntentAtLocationInFlow = ``;
+      string += `* ${intent.name}${EOL}${actionsOnIntentAtLocationInFlow}`;
+    }
+    return string;
   };
   /**
    * Writes `stories.md` in the correct location.
@@ -264,14 +240,14 @@ ${this.projectData.entities.map(entity => nlu.generateEntityContent(entity)).joi
     await writeFile(join(this.outputDir, "data", "stories.md"), this.#createStories());
   }
   /**
-   * Formats given text
+   * Formats given text.
    * @param text text to sanitize
    */
   private sanitizeIntentName(text: string): string {
     return snakeCase(text.replace(/\s/g, ""));
   }
   /**
-   * Creates a string representing the required slot structure
+   * Creates a string representing the required slot structure.
    * @remarks this is appending to the serialized string because
    * rasa does not treat the slots as a standard "yamlized" object
    * @param slots the slots from which to create the string
@@ -304,7 +280,7 @@ ${this.projectData.entities.map(entity => nlu.generateEntityContent(entity)).joi
         .map(intent => this.sanitizeIntentName(intent.name))
         .concat(this.welcomeIntent ? [this.sanitizeIntentName(this.welcomeIntent.name)] : []),
       entities: this.projectData.variables.map(variable => variable.name.replace(/\s/, "")),
-      actions: this.getUniqueActionNames(),
+      actions: this.#actionNames,
       templates: this.getTemplates(),
     };
     let serialData: string = toYAML(data);
