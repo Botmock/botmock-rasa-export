@@ -1,6 +1,4 @@
 node_modules
-coverage
-output
-err.json
-.vscode
-*.env
+data
+domain.yml
+.env

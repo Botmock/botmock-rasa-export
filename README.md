@@ -1,7 +1,5 @@
 # Botmock Rasa Export
 
-<!-- [![Build Status](https://dev.azure.com/botmock/botmock-rasa-export/_apis/build/status/Botmock.botmock-rasa-export?branchName=master)](https://dev.azure.com/botmock/botmock-rasa-export/_build/latest?definitionId=9&branchName=master) -->
-
 > creates [rasa](https://rasa.com) domain, nlu, and stories from a [botmock](https://botmock.com) project
 
 This script generates Rasa [training data](https://rasa.com/docs/rasa/nlu/training-data-format/#training-data-format), [stories](https://rasa.com/docs/rasa/core/stories/#stories), and [domain](https://rasa.com/docs/rasa/core/domains/) from a given Botmock project.
@@ -58,13 +56,13 @@ npm i
 
 #### Env
 
-Create `.env` in `/botmock-rasa-export` and fill in values for the following:
+Rename `sample.env` to `.env` and fill in values for the following:
 
 ```shell
-BOTMOCK_TOKEN="BOTMOCK_TOKEN"
-BOTMOCK_TEAM_ID="BOTMOCK_TEAM_ID"
-BOTMOCK_BOARD_ID="BOTMOCK_BOARD_ID"
-BOTMOCK_PROJECT_ID="BOTMOCK_PROJECT_ID"
+TOKEN="TOKEN"
+TEAM_ID="TEAM_ID"
+BOARD_ID="BOARD_ID"
+PROJECT_ID="BOTMOCK_PROJECT_ID"
 ```
 
 To get your Botmock API token, follow the [guide](http://help.botmock.com/en/articles/2334581-developer-api).

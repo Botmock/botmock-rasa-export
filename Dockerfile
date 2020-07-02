@@ -1,6 +1,6 @@
 FROM node:alpine
 
-COPY .env lib/ package*.json index.ts ./
+COPY .env package*.json index.ts ./
 
 RUN npm install
 
