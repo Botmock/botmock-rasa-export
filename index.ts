@@ -2,7 +2,7 @@ import "dotenv/config";
 import { RasaExporter, FileWriter, Kind, ProjectReference } from "@botmock/export";
 
 /**
- * Generates `./domain.yml` and `./data` directory.
+ * Generates `./domain.yml` and `./data` directory in `./output`.
  *
  * @example
  * ```shell
@@ -18,7 +18,7 @@ async function main(): Promise<void> {
   const exporter = new RasaExporter({ token: process.env.TOKEN as string });
   const { data } = await exporter.exportProjectUnderDataTransformations({ projectReference });
 
-  const writeResult = await (new FileWriter()).writeAllResourcesToFiles({ data });
+  const writeResult = await (new FileWriter({ directoryRoot: "./output" })).writeAllResourcesToFiles({ data });
   if (writeResult.kind !== Kind.OK) {
     console.error(writeResult.value);
   }
