@@ -1,7 +1,9 @@
 import "dotenv/config";
-import { RasaExporter, Resources, FileWriter, Kind, ProjectReference } from "@botmock/export";
+import { RasaExporter, FileWriter, Kind, ProjectReference } from "@botmock/export";
 
 /**
+ * Generates `./domain.yml` and `./data` directory.
+ *
  * @example
  * ```shell
  * npm start
