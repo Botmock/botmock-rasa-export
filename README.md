@@ -22,7 +22,7 @@ Running the following commands should allow you to generate restorable content f
 - `git clone git@github.com:Botmock/botmock-rasa-export.git`
 - `cd botmock-rasa-export`
 - `npm install`
-- `mv ./sample.env ./env` and edit `.env` to contain your token and project ids
+- `mv ./sample.env ./.env` and edit `.env` to contain your token and project ids
 - `npm start`
 
 `./data` and `./domain.yml` should be generated in your project root.
