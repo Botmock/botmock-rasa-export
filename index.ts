@@ -15,8 +15,28 @@ async function main(): Promise<void> {
     projectId: process.env.BOTMOCK_PROJECT_ID as string,
     boardId: process.env.BOTMOCK_BOARD_ID,
   };
-  const exporter = new RasaExporter({ token: process.env.BOTMOCK_TOKEN as string });
-  const { data } = await exporter.exportProjectUnderDataTransformations({ projectReference });
+
+  // hooks to modify output
+  const _modifyIntentCallback = (intent: any) => {
+    return intent;
+  };
+  const _modifyUtteranceCallback = (utterance: any) => {
+    return utterance;
+  }
+  const _modifyEntityCallback = (entity: any) => {
+    return entity;
+  }
+
+  const exporter = new RasaExporter({
+    token: process.env.BOTMOCK_TOKEN as string,
+    modifyIntentCallback: _modifyIntentCallback,
+    modifyUtteranceCallback: _modifyUtteranceCallback,
+    modifyEntityCallback: _modifyEntityCallback,
+    useNodeNameForResponses: false // use block title instead of ids. Highly recommended to leave it false
+  });
+  
+
+  const { data } = await exporter.export({ projectReference });
 
   const writeResult = await (new FileWriter({ directoryRoot: "./output" })).writeAllResourcesToFiles({ data });
   if (writeResult.kind !== Kind.OK) {
